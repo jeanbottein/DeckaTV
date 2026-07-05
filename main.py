@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "py_modules"))
 
 from tv_core.driver import build_registry, list_brands, select_driver
 from tv_core.edid import connected_displays
-from tv_core.logs import prune_logs, read_log_tail
+from tv_core.logs import clear_logs, prune_logs, read_log_tail
 from tv_core.store import Store
 from tv_core.wol import is_valid_mac, resolve_mac, send_magic_packet
 from tv_driver_lg import LgDriver
@@ -105,6 +105,9 @@ class Plugin:
 
     async def read_logs(self):
         return read_log_tail(decky.DECKY_PLUGIN_LOG_DIR, LOG_TAIL_LINES)
+
+    async def clear_logs(self):
+        clear_logs(decky.DECKY_PLUGIN_LOG_DIR)
 
     async def is_reachable(self, host: str):
         tv = self.store.find_tv(host)

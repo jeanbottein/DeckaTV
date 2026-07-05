@@ -40,6 +40,17 @@ def read_log_tail(log_dir, max_lines):
     return _tail(files[0], max_lines)
 
 
+def clear_logs(log_dir):
+    """Empty the plugin's log file(s) in place so the viewer can start fresh. Truncating
+    keeps the file the running logger already holds open (its next line appends to the top)."""
+    for path in _readable_files(log_dir):
+        try:
+            with open(path, "w", encoding="utf-8"):
+                pass
+        except OSError:
+            pass
+
+
 def prune_logs(log_dir, keep=1):
     """Delete all but the newest `keep` .log files (never touches other files)."""
     for path in _newest_first(_log_files(log_dir))[keep:]:

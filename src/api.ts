@@ -59,5 +59,6 @@ export const removeRule = callable<[displayId: string], void>("remove_rule");
 export const reapplyRules = callable<[], void>("reapply_rules");
 export const isReachable = callable<[host: string], boolean>("is_reachable");
 export const readLogs = callable<[], string>("read_logs");
+export const clearLogs = callable<[], void>("clear_logs");
 
 export const tvLabel = (tv: Tv): string => tv.name || tv.host;
