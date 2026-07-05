@@ -19,7 +19,7 @@ class LgDriver(TvDriver):
         return await webos.fetch_inputs(host, creds)
 
     async def set_input(self, host, creds, input_id):
-        await webos.set_input(host, creds, input_id)
+        return await webos.set_input(host, creds, input_id)
 
     async def reachable(self, host):
         return await webos.reachable(host)
