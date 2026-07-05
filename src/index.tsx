@@ -22,6 +22,7 @@ import { TvManage } from "./components/TvManage";
 import { PairView } from "./components/PairView";
 import { InputSwitcher } from "./components/InputSwitcher";
 import { AutoSwitch } from "./components/AutoSwitch";
+import { TriggerSettings } from "./components/TriggerSettings";
 import { Logs } from "./components/Logs";
 
 const sameInputs = (a: Input[], b: Input[]) =>
@@ -173,6 +174,7 @@ function Content() {
       {selectedTv ? (
         <AutoSwitch tv={selectedTv} displays={displays} rules={rules} inputs={inputs} onChanged={refresh} />
       ) : null}
+      {rules.some((rule) => rule.enabled) ? <TriggerSettings /> : null}
       <PanelSection>
         <TvManage tvs={tvs} selectedHost={selectedHost} onChanged={refresh} />
         <Logs />

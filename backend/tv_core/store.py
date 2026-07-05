@@ -15,6 +15,7 @@ class Store:
         self._data.setdefault("tvs", [])
         self._data.setdefault("rules", [])
         self._data.setdefault("selected", "")
+        self._data.setdefault("triggers", {})
 
     def _read(self):
         try:
@@ -43,6 +44,18 @@ class Store:
 
     def set_selected(self, host):
         self._data["selected"] = host
+        self._save()
+
+    @property
+    def triggers(self):
+        return self._data["triggers"]
+
+    def trigger_enabled(self, name):
+        """Triggers default on: a name we've never persisted counts as enabled."""
+        return self._data["triggers"].get(name, True)
+
+    def set_trigger(self, name, enabled):
+        self._data["triggers"][name] = bool(enabled)
         self._save()
 
     def find_tv(self, host):

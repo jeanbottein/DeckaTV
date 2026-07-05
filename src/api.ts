@@ -29,6 +29,12 @@ export interface Input {
   label: string;
 }
 
+export interface Triggers {
+  connect: boolean;
+  wake: boolean;
+  home: boolean;
+}
+
 export interface DiscoveredTv {
   host: string;
   name: string;
@@ -39,6 +45,8 @@ export const listTvs = callable<[], Tv[]>("list_tvs");
 export const getSelectedTv = callable<[], string>("get_selected_tv");
 export const setSelectedTv = callable<[host: string], void>("set_selected_tv");
 export const listRules = callable<[], Rule[]>("list_rules");
+export const getTriggers = callable<[], Triggers>("get_triggers");
+export const setTrigger = callable<[name: string, enabled: boolean], void>("set_trigger");
 export const listDisplays = callable<[], Display[]>("list_displays");
 export const getInputs = callable<[host: string], Input[]>("get_inputs");
 export const discoverTvs = callable<[brand: string], DiscoveredTv[]>("discover_tvs");
