@@ -189,17 +189,20 @@ export default definePlugin(() => {
     },
   );
 
-  // "One Touch Play", like an Xbox/console home button: when the Steam overlay/menu gains
-  // focus (the closest signal a plugin gets to the Steam button — the raw button is
-  // captured by gamescope and never reaches plugin JS), re-assert the docked TV's input.
-  // The backend no-ops when the TV is already on that input, so firing often is cheap; the
-  // debounce just keeps focus churn from stacking calls. Registered here (not in the panel,
+  // "One Touch Play", like a console's home button: pressing the controller's central Steam/Guide
+  // button re-asserts the docked TV's input. RegisterForSystemKeyEvents reports that button as
+  // eKey=0 (eKey=1 is the "…" Quick Access button). Unlike focus-change events — which fire every
+  // 5s on their own, and which a switch's own toast/HDMI-flap re-emits (the old hook's infinite
+  // loop) — a system-key event fires only on the physical press, on the home screen and in games
+  // alike, and is never a side effect of switching, so it can't self-trigger a loop. The backend
+  // no-ops when the TV is already on that input, so firing often is cheap; the debounce just
+  // coalesces the press/release pair and rapid re-presses. Registered here (not in the panel,
   // which only exists while the QAM is open) so it lives for the whole session.
   const steamClient = (window as unknown as { SteamClient?: any }).SteamClient;
-  // Fully guarded: a stale backend missing reapply_rules must NEVER break plugin load. A
-  // callable can surface "unknown method" synchronously, so wrap the call itself — not just
-  // the returned promise — or the throw escapes definePlugin and the whole plugin fails to
-  // import (Error: unknown method … in PluginLoader.importReactPlugin).
+  // Fully guarded: a stale backend missing reapply_rules must NEVER break plugin load. A callable
+  // can surface "unknown method" synchronously, so wrap the call itself — not just the returned
+  // promise — or the throw escapes definePlugin and the whole plugin fails to import (Error:
+  // unknown method … in PluginLoader.importReactPlugin).
   const safe = (run: () => Promise<unknown> | undefined) => {
     try {
       void run()?.catch(() => {});
@@ -207,18 +210,20 @@ export default definePlugin(() => {
       /* stale/mismatched backend — ignore */
     }
   };
+  const STEAM_BUTTON_KEY = 0; // eKey for the central Steam/Guide button (eKey=1 is Quick Access)
   let lastReapply = 0;
-  const onFocusChange = () => {
+  const onSystemKey = (event: { eKey?: number }) => {
+    if (event?.eKey !== STEAM_BUTTON_KEY) return;
     const now = Date.now();
     if (now - lastReapply < 3000) return;
     lastReapply = now;
     safe(() => reapplyRules());
   };
-  let focusReg: { unregister?: () => void } | undefined;
+  let keyReg: { unregister?: () => void } | undefined;
   try {
-    focusReg = steamClient?.System?.UI?.RegisterForFocusChangeEvents?.(onFocusChange);
+    keyReg = steamClient?.System?.UI?.RegisterForSystemKeyEvents?.(onSystemKey);
   } catch (error) {
-    console.error("[deckatv] focus hook setup failed", error);
+    console.error("[deckatv] system-key hook setup failed", error);
   }
 
   return {
@@ -231,7 +236,7 @@ export default definePlugin(() => {
     icon: <FaTv />,
     onDismount() {
       removeEventListener("auto_switch", listener);
-      focusReg?.unregister?.();
+      keyReg?.unregister?.();
     },
   };
 });
