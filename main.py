@@ -309,11 +309,14 @@ class Plugin:
             if not await self._wake(tv):
                 return  # asleep/unreachable right now — leave it queued for the next poll
             driver = select_driver(REGISTRY, tv["brand"])
-            await driver.set_input(tv["host"], tv["creds"], rule["input_id"])
+            changed = await driver.set_input(tv["host"], tv["creds"], rule["input_id"])
             self.last_success[did] = time.monotonic()
             self.pending.pop(did, None)
-            decky.logger.info(f"auto-switch: {tv['name']} -> {rule['input_id']}")
-            await decky.emit("auto_switch", tv["name"], rule["input_id"])
+            # Only announce an actual change: the driver returns False when the TV was already on
+            # this input, so pressing the Steam button while already docked stays quiet.
+            if changed is not False:
+                decky.logger.info(f"auto-switch: {tv['name']} -> {rule['input_id']}")
+                await decky.emit("auto_switch", tv["name"], rule["input_id"])
         except Exception as error:  # noqa: BLE001 - SSAP may not be ready just after boot; retry next poll
             decky.logger.info(f"auto-switch attempt for {did} failed: {error}")
         finally:

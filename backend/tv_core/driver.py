@@ -18,7 +18,8 @@ class TvDriver:
         raise NotImplementedError
 
     async def set_input(self, host, creds, input_id):
-        """Switch the TV to `input_id`."""
+        """Switch the TV to `input_id`. Return True if the input actually changed, or False if
+        the TV was already on it, so callers can skip a redundant "switched" notification."""
         raise NotImplementedError
 
     async def reachable(self, host):

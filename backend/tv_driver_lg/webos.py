@@ -2,7 +2,10 @@
 
 import asyncio
 import json
+import logging
 import ssl
+
+logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 6
 PAIR_TIMEOUT = 60
@@ -17,6 +20,10 @@ REGISTER_MANIFEST = {
         "CONTROL_INPUT_TV",
         "READ_INPUT_DEVICE_LIST",
         "READ_TV_CURRENT_CHANNEL",
+        # Needed for getForegroundAppInfo (reading the current input) — without it the TV
+        # rejects the request with "401 insufficient permissions".
+        "READ_RUNNING_APPS",
+        "READ_APP_STATUS",
         "WRITE_SETTINGS",
     ],
 }
@@ -107,17 +114,24 @@ class WebOSClient:
     async def current_input(self):
         """Return the id of the external input currently on screen, or None.
 
-        Maps the foreground app's id back to an entry in the external input list;
-        returns None when the TV isn't on an external input (e.g. an app is open).
+        Maps the foreground app id (e.g. "com.webos.app.hdmi1") back to an external input's
+        id (e.g. "HDMI_1"); returns None when the TV isn't on an external input.
         """
         foreground = await self._request("ssap://com.webos.applicationManager/getForegroundAppInfo")
-        app_id = foreground.get("appId")
+        app_id = foreground.get("appId") or ""
         if not app_id:
             return None
-        payload = await self._request("ssap://tv/getExternalInputList")
-        for device in payload.get("devices", []):
+        devices = (await self._request("ssap://tv/getExternalInputList")).get("devices", [])
+        for device in devices:
             if device.get("appId") == app_id:
                 return device["id"]
+        # Some TVs' input list omits appId — fall back to matching the app id's compact suffix
+        # to an input id ("com.webos.app.hdmi1" ↔ "HDMI_1").
+        compact = app_id.lower().replace("_", "")
+        for device in devices:
+            input_id = device.get("id", "")
+            if input_id and compact.endswith(input_id.lower().replace("_", "")):
+                return input_id
         return None
 
 
@@ -151,13 +165,17 @@ async def fetch_inputs(host, key):
 
 
 async def set_input(host, key, input_id):
+    """Switch the TV to `input_id`; return True if it switched, False if already there."""
     async with WebOSClient(host) as client:
         await client.register(key)
         # Skip the switch (and its HDMI renegotiation) if we're already on this input.
         try:
-            already_current = await client.current_input() == input_id
-        except Exception:  # noqa: BLE001 - if the check fails, fall back to switching
-            already_current = False
-        if already_current:
-            return
+            current = await client.current_input()
+        except Exception as error:  # noqa: BLE001 - if the check fails, fall back to switching
+            logger.info("current_input check failed for %s: %r", host, error)
+            current = None
+        logger.debug("set_input %s: target=%r current=%r", host, input_id, current)
+        if current == input_id:
+            return False
         await client.switch_input(input_id)
+        return True
