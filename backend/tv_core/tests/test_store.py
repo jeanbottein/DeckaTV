@@ -30,3 +30,18 @@ def test_removing_other_tv_keeps_selection(tmp_path):
     store.set_selected("10.0.0.5")
     store.remove_tv("10.0.0.6")
     assert store.selected == "10.0.0.5"
+
+
+def test_triggers_default_to_enabled(tmp_path):
+    store = _store(tmp_path)
+    assert store.trigger_enabled("connect")
+    assert store.trigger_enabled("wake")
+    assert store.trigger_enabled("never-set")
+
+
+def test_set_trigger_persists_across_instances(tmp_path):
+    path = tmp_path / "store.json"
+    Store(str(path)).set_trigger("wake", False)
+    reloaded = Store(str(path))
+    assert reloaded.trigger_enabled("wake") is False
+    assert reloaded.trigger_enabled("connect") is True

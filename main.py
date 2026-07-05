@@ -53,6 +53,11 @@ logging.getLogger("websockets").setLevel(logging.WARNING)
 
 REGISTRY = build_registry([LgDriver()])
 
+# Auto-switch trigger toggles, persisted per-name in the store (default on). "connect" = a
+# screen appears (docking or booting up docked); "wake" = it re-appears after resume; "home"
+# = the Steam-button re-assert. Disabling one suppresses just that path.
+TRIGGERS = ("connect", "wake", "home")
+
 
 class Plugin:
     async def _main(self):
@@ -64,6 +69,7 @@ class Plugin:
         self.inflight = set()  # display_ids with an attempt running (one at a time per display)
         self.last_success = {}  # display_id -> monotonic time of the last successful switch
         self.tasks = set()  # spawned attempts, kept alive and cancellable on unload
+        self._resumed = False  # set when _watch detects a resume; tags the next poll as "wake"
         self.watcher = asyncio.get_event_loop().create_task(self._watch())
 
     async def _unload(self):
@@ -87,6 +93,12 @@ class Plugin:
 
     async def list_rules(self):
         return self.store.rules
+
+    async def get_triggers(self):
+        return {name: self.store.trigger_enabled(name) for name in TRIGGERS}
+
+    async def set_trigger(self, name: str, enabled: bool):
+        self.store.set_trigger(name, enabled)
 
     async def list_displays(self):
         return connected_displays()
@@ -153,6 +165,8 @@ class Plugin:
         right away. The driver no-ops when the TV is already on the target input, so pressing
         repeatedly is cheap. Reuses the drain/attempt path, so retries, wake, and the
         one-attempt-per-display guard all still apply."""
+        if not self.store.trigger_enabled("home"):
+            return
         now = time.monotonic()
         present = {display["id"] for display in connected_displays()}
         # A display we haven't seen yet may still be mid dock-reconfig, so give it the settle
@@ -225,6 +239,7 @@ class Plugin:
                 self.seen = set()
                 self.pending.clear()
                 self.last_success.clear()
+                self._resumed = True  # tag the next poll's re-appearances as the "wake" trigger
             suspended = now_suspended
             last_error = await self._poll(last_error)
             await asyncio.sleep(POLL_SECONDS)
@@ -252,7 +267,14 @@ class Plugin:
         # the appearance lost the switch whenever the network or TV wasn't ready in that one
         # window — exactly the case on cold boot, and often on resume.
         now = time.monotonic()
-        self._enqueue(self._take_appeared(), now)
+        # A re-appearance right after a resume is the "wake" trigger; any other is "connect"
+        # (docking or booting up docked). _enqueue skips the batch if that trigger is off.
+        # Consume the resume flag only once the displays are read, so a failed poll retries as
+        # "wake" rather than downgrading to "connect".
+        appeared = self._take_appeared()
+        reason = "wake" if self._resumed else "connect"
+        self._resumed = False
+        self._enqueue(appeared, now, reason)
         self._drain(now)
 
     def _take_appeared(self):
@@ -261,8 +283,11 @@ class Plugin:
         self.seen = present
         return appeared
 
-    def _enqueue(self, appeared, now):
-        """Queue a rule (for repeated attempts) when its display newly appears."""
+    def _enqueue(self, appeared, now, reason):
+        """Queue a rule (for repeated attempts) when its display newly appears — unless the
+        trigger for why it appeared (connect/wake) is switched off."""
+        if not self.store.trigger_enabled(reason):
+            return
         for rule in self.store.rules:
             did = rule["display_id"]
             if not rule.get("enabled") or did not in appeared:
