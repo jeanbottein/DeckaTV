@@ -1,6 +1,6 @@
 import os
 
-from tv_core.logs import prune_logs, read_log_tail
+from tv_core.logs import clear_logs, prune_logs, read_log_tail
 
 
 def _write(path, text):
@@ -62,3 +62,15 @@ def test_prune_is_a_noop_for_a_single_log(tmp_path):
 
 def test_prune_handles_empty_dir(tmp_path):
     prune_logs(str(tmp_path))
+
+
+def test_clear_empties_the_log_but_keeps_the_file(tmp_path):
+    log = tmp_path / "plugin.log"
+    _write(log, "noise\nmore noise\n")
+    clear_logs(str(tmp_path))
+    assert os.path.exists(log)
+    assert read_log_tail(str(tmp_path), 100) == ""
+
+
+def test_clear_handles_empty_dir(tmp_path):
+    clear_logs(str(tmp_path))
