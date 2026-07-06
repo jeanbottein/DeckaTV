@@ -45,3 +45,13 @@ def test_set_trigger_persists_across_instances(tmp_path):
     reloaded = Store(str(path))
     assert reloaded.trigger_enabled("wake") is False
     assert reloaded.trigger_enabled("connect") is True
+
+
+def test_notifications_default_to_enabled(tmp_path):
+    assert _store(tmp_path).notifications is True
+
+
+def test_set_notifications_persists_across_instances(tmp_path):
+    path = tmp_path / "store.json"
+    Store(str(path)).set_notifications(False)
+    assert Store(str(path)).notifications is False

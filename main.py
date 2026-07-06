@@ -100,6 +100,12 @@ class Plugin:
     async def set_trigger(self, name: str, enabled: bool):
         self.store.set_trigger(name, enabled)
 
+    async def get_notifications(self):
+        return self.store.notifications
+
+    async def set_notifications(self, enabled: bool):
+        self.store.set_notifications(enabled)
+
     async def list_displays(self):
         return connected_displays()
 

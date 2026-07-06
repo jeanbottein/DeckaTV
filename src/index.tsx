@@ -1,5 +1,5 @@
 import { PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
-import { addEventListener, definePlugin, removeEventListener, toaster } from "@decky/api";
+import { addEventListener, definePlugin, removeEventListener } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaTv } from "react-icons/fa";
 import {
@@ -9,6 +9,7 @@ import {
   listDisplays,
   listRules,
   listTvs,
+  getNotifications,
   reapplyRules,
   setSelectedTv,
   type Brand,
@@ -23,7 +24,9 @@ import { PairView } from "./components/PairView";
 import { InputSwitcher } from "./components/InputSwitcher";
 import { AutoSwitch } from "./components/AutoSwitch";
 import { TriggerSettings } from "./components/TriggerSettings";
+import { NotificationSettings } from "./components/NotificationSettings";
 import { Logs } from "./components/Logs";
+import { notify, setNotify } from "./notify";
 
 const sameInputs = (a: Input[], b: Input[]) =>
   a.length === b.length && a.every((item, i) => item.id === b[i].id && item.label === b[i].label);
@@ -174,7 +177,12 @@ function Content() {
       {selectedTv ? (
         <AutoSwitch tv={selectedTv} displays={displays} rules={rules} inputs={inputs} onChanged={refresh} />
       ) : null}
-      {rules.some((rule) => rule.enabled) ? <TriggerSettings /> : null}
+      {rules.some((rule) => rule.enabled) ? (
+        <>
+          <TriggerSettings />
+          <NotificationSettings />
+        </>
+      ) : null}
       <PanelSection>
         <TvManage tvs={tvs} selectedHost={selectedHost} onChanged={refresh} />
         <Logs />
@@ -187,9 +195,17 @@ export default definePlugin(() => {
   const listener = addEventListener<[name: string, inputId: string]>(
     "auto_switch",
     (name, inputId) => {
-      toaster.toast({ title: "TV input switched", body: `${name} → ${inputId}` });
+      notify({ title: "TV input switched", body: `${name} → ${inputId}` });
     },
   );
+
+  // Seed the toast flag once at session start so the listener above honours the setting even if
+  // the panel is never opened. The in-panel toggle keeps this same module-level flag in sync.
+  try {
+    getNotifications().then(setNotify).catch(() => {});
+  } catch {
+    /* stale/mismatched backend — ignore */
+  }
 
   // "One Touch Play", like a console's home button: pressing the controller's central Steam/Guide
   // button re-asserts the docked TV's input. RegisterForSystemKeyEvents reports that button as

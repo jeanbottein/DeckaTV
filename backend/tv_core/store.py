@@ -16,6 +16,7 @@ class Store:
         self._data.setdefault("rules", [])
         self._data.setdefault("selected", "")
         self._data.setdefault("triggers", {})
+        self._data.setdefault("notifications", True)
 
     def _read(self):
         try:
@@ -56,6 +57,15 @@ class Store:
 
     def set_trigger(self, name, enabled):
         self._data["triggers"][name] = bool(enabled)
+        self._save()
+
+    @property
+    def notifications(self):
+        """Whether an auto-switch surfaces a toast. Defaults on, like the triggers."""
+        return self._data.get("notifications", True)
+
+    def set_notifications(self, enabled):
+        self._data["notifications"] = bool(enabled)
         self._save()
 
     def find_tv(self, host):
