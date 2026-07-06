@@ -11,6 +11,7 @@ import {
   listTvs,
   getNotifications,
   reapplyRules,
+  safeCall,
   setSelectedTv,
   type Brand,
   type Display,
@@ -66,7 +67,9 @@ function Content() {
     snapshot = { tvs, displays, rules, selectedHost, inputs };
   }, [tvs, displays, rules, selectedHost, inputs]);
 
-  const refresh = async () => {
+  // Fetch the fast local-store state and apply the setters common to both loads; returns the
+  // bits each caller resolves differently. No live TV round-trip, so the panel stays snappy.
+  const loadCore = async () => {
     const [nextTvs, nextDisplays, nextRules, saved] = await Promise.all([
       listTvs(),
       listDisplays(),
@@ -76,28 +79,25 @@ function Content() {
     setTvs(nextTvs);
     setDisplays(nextDisplays);
     setRules(nextRules);
+    return { nextTvs, saved };
+  };
+
+  const refresh = async () => {
+    const { nextTvs, saved } = await loadCore();
     setSelectedHost((current) => pickSelected(nextTvs, saved, current));
   };
 
   useEffect(() => {
     listBrands().then(setBrands);
     let active = true;
-    // Initial load: gate only on the fast local store reads (no live TV round-trip), so
-    // the panel reveals immediately. Seed the Manual switch from the cached inputs that
-    // already travel with each TV; the polling effect refreshes it from the TV in the
-    // background. Blocking the whole UI on getInputs() here cost ~2s on every open.
+    // Initial load: gate only on the fast local store reads (see loadCore), so the panel
+    // reveals immediately. Seed the Manual switch from the cached inputs that already travel
+    // with each TV; the polling effect refreshes it from the TV in the background. Blocking
+    // the whole UI on getInputs() here cost ~2s on every open.
     (async () => {
       try {
-        const [nextTvs, nextDisplays, nextRules, saved] = await Promise.all([
-          listTvs(),
-          listDisplays(),
-          listRules(),
-          getSelectedTv(),
-        ]);
+        const { nextTvs, saved } = await loadCore();
         if (!active) return;
-        setTvs(nextTvs);
-        setDisplays(nextDisplays);
-        setRules(nextRules);
         const host = pickSelected(nextTvs, saved, "");
         setSelectedHost(host);
         const cached = nextTvs.find((tv) => tv.host === host)?.inputs ?? [];
@@ -201,11 +201,7 @@ export default definePlugin(() => {
 
   // Seed the toast flag once at session start so the listener above honours the setting even if
   // the panel is never opened. The in-panel toggle keeps this same module-level flag in sync.
-  try {
-    getNotifications().then(setNotify).catch(() => {});
-  } catch {
-    /* stale/mismatched backend — ignore */
-  }
+  safeCall(() => getNotifications().then(setNotify));
 
   // "One Touch Play", like a console's home button: pressing the controller's central Steam/Guide
   // button re-asserts the docked TV's input. RegisterForSystemKeyEvents reports that button as
@@ -217,17 +213,10 @@ export default definePlugin(() => {
   // coalesces the press/release pair and rapid re-presses. Registered here (not in the panel,
   // which only exists while the QAM is open) so it lives for the whole session.
   const steamClient = (window as unknown as { SteamClient?: any }).SteamClient;
-  // Fully guarded: a stale backend missing reapply_rules must NEVER break plugin load. A callable
-  // can surface "unknown method" synchronously, so wrap the call itself — not just the returned
-  // promise — or the throw escapes definePlugin and the whole plugin fails to import (Error:
-  // unknown method … in PluginLoader.importReactPlugin).
-  const safe = (run: () => Promise<unknown> | undefined) => {
-    try {
-      void run()?.catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
-  };
+  // reapplyRules is fully guarded via safeCall: a stale backend missing it must NEVER break
+  // plugin load. A callable can surface "unknown method" synchronously, so safeCall wraps the
+  // call itself — not just the returned promise — or the throw escapes definePlugin and the
+  // whole plugin fails to import (Error: unknown method … in PluginLoader.importReactPlugin).
   const STEAM_BUTTON_KEY = 0; // eKey for the central Steam/Guide button (eKey=1 is Quick Access)
   let lastReapply = 0;
   const onSystemKey = (event: { eKey?: number }) => {
@@ -235,7 +224,7 @@ export default definePlugin(() => {
     const now = Date.now();
     if (now - lastReapply < 3000) return;
     lastReapply = now;
-    safe(() => reapplyRules());
+    safeCall(() => reapplyRules());
   };
   let keyReg: { unregister?: () => void } | undefined;
   try {

@@ -1,6 +1,6 @@
 import { PanelSection, PanelSectionRow, ToggleField } from "@decky/ui";
 import { useEffect, useState } from "react";
-import { getNotifications, setNotifications } from "../api";
+import { getNotifications, safeCall, setNotifications } from "../api";
 import { setNotify } from "../notify";
 
 // Global toggle for the auto-switch toast. Defaults on, so an untouched install behaves as
@@ -10,16 +10,12 @@ export function NotificationSettings() {
   const [on, setOn] = useState<boolean | null>(null);
 
   useEffect(() => {
-    try {
-      getNotifications()
-        .then((value) => {
-          setOn(value);
-          setNotify(value);
-        })
-        .catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
+    safeCall(() =>
+      getNotifications().then((value) => {
+        setOn(value);
+        setNotify(value);
+      }),
+    );
   }, []);
 
   if (on === null) return null;
@@ -27,11 +23,7 @@ export function NotificationSettings() {
   const toggle = (value: boolean) => {
     setOn(value);
     setNotify(value);
-    try {
-      void setNotifications(value).catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
+    safeCall(() => setNotifications(value));
   };
 
   return (

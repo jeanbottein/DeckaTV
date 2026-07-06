@@ -1,6 +1,6 @@
 import { PanelSection, PanelSectionRow, ToggleField } from "@decky/ui";
 import { useEffect, useState } from "react";
-import { getTriggers, setTrigger, type Triggers } from "../api";
+import { getTriggers, safeCall, setTrigger, type Triggers } from "../api";
 
 // Global (not per-TV) toggles for which events re-assert the TV input. Keys match the backend
 // TRIGGERS; all default on, so an untouched install behaves exactly as before.
@@ -16,22 +16,14 @@ export function TriggerSettings() {
   // Leave the section hidden on a stale backend that lacks get_triggers (guarded like the
   // rest of the plugin's callable use, since a missing method can throw synchronously).
   useEffect(() => {
-    try {
-      getTriggers().then(setTriggers).catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
+    safeCall(() => getTriggers().then(setTriggers));
   }, []);
 
   if (!triggers) return null;
 
   const toggle = (key: keyof Triggers, on: boolean) => {
     setTriggers({ ...triggers, [key]: on });
-    try {
-      void setTrigger(key, on).catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
+    safeCall(() => setTrigger(key, on));
   };
 
   return (

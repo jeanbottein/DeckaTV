@@ -64,3 +64,14 @@ export const readLogs = callable<[], string>("read_logs");
 export const clearLogs = callable<[], void>("clear_logs");
 
 export const tvLabel = (tv: Tv): string => tv.name || tv.host;
+
+// Invoke a backend callable, swallowing every failure. A missing method on a stale/mismatched
+// backend can throw synchronously (not just reject), so the call itself is wrapped — not only
+// the returned promise. Used wherever a newer-frontend callable must never break plugin load.
+export const safeCall = (run: () => Promise<unknown> | undefined): void => {
+  try {
+    void run()?.catch(() => {});
+  } catch {
+    /* stale/mismatched backend — ignore */
+  }
+};

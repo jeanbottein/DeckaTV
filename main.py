@@ -187,11 +187,7 @@ class Plugin:
             did = rule["display_id"]
             if not rule.get("enabled") or did not in present:
                 continue
-            after = now + SETTLE_SECONDS if did in appeared else now
-            existing = self.pending.get(did)
-            if existing is not None:
-                after = max(after, existing["after"])
-            self.pending[did] = {"after": after, "deadline": now + APPLY_BUDGET_SECONDS}
+            self._queue(did, now + SETTLE_SECONDS if did in appeared else now, now)
             queued.append(did)
         if queued:
             decky.logger.info(f"reapply requested for {queued}")
@@ -305,7 +301,15 @@ class Plugin:
             # lands within COOLDOWN_SECONDS of this display's last *successful* switch.
             if now - self.last_success.get(did, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS:
                 continue
-            self.pending[did] = {"after": now + SETTLE_SECONDS, "deadline": now + APPLY_BUDGET_SECONDS}
+            self._queue(did, now + SETTLE_SECONDS, now)
+
+    def _queue(self, did, after, now):
+        """Queue a display for switch attempts until APPLY_BUDGET_SECONDS elapses, never pulling
+        an already-queued attempt earlier than it was scheduled."""
+        scheduled = self.pending.get(did)
+        if scheduled is not None:
+            after = max(after, scheduled["after"])
+        self.pending[did] = {"after": after, "deadline": now + APPLY_BUDGET_SECONDS}
 
     def _drain(self, now):
         """Attempt each queued rule once per poll until it succeeds or its budget expires."""
