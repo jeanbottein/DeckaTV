@@ -5,8 +5,10 @@ HDMI input from the Quick Access menu, and automatically wakes a TV and switches
 it to the right input when SteamOS connects to that screen — like HDMI-CEC, but
 over the network.
 
-The core is brand-agnostic. **LG (webOS)** ships as the first driver; other
-brands plug in without touching the rest of the code.
+The core is brand-agnostic. **LG (webOS)** ships as the first driver, and
+**Samsung (Tizen)** ships as a `[BETA]` driver — written against the documented
+protocol but not yet verified on real hardware. Other brands plug in without
+touching the rest of the code.
 
 ## Features
 
@@ -30,13 +32,16 @@ backend/                        Python source (our code)
   tv_driver_lg/                 LG driver package (depends on tv_core)
     __init__.py                 LgDriver
     webos.py                    LG SSAP WebSocket client
+  tv_driver_samsung_tizen/      Samsung Tizen driver package [BETA] (depends on tv_core)
+    __init__.py                 SamsungTizenDriver
+    remote.py                   Samsung Tizen remote WebSocket client
 src/                            React UI (generic; brand is just a dropdown)
 scripts/                        build, deploy, and vendor tooling
 py_modules/websockets/          vendored pure-Python dependency (gitignored; built in CI)
 ```
 
 Single repository, single release. Dependencies point one way:
-`tv_driver_lg → tv_core`, and `main.py → both`. The core never imports a driver;
+each `tv_driver_* → tv_core`, and `main.py → all`. The core never imports a driver;
 it only calls `pair`, `list_inputs`, and `set_input` on the `TvDriver` contract.
 Displays are identified by EDID, so a rule follows the physical TV rather than a
 port. A 5-second poll detects when a screen appears and applies its rule.

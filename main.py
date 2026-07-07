@@ -16,6 +16,7 @@ from tv_core.logs import clear_logs, prune_logs, read_log_tail
 from tv_core.store import Store
 from tv_core.wol import is_valid_mac, resolve_mac, send_magic_packet
 from tv_driver_lg import LgDriver
+from tv_driver_samsung_tizen import SamsungTizenDriver
 
 POLL_SECONDS = 5
 LOG_TAIL_LINES = 200
@@ -51,7 +52,7 @@ RESUME_THRESHOLD = 10
 # Keep the vendored websockets library from writing chatty connection logs.
 logging.getLogger("websockets").setLevel(logging.WARNING)
 
-REGISTRY = build_registry([LgDriver()])
+REGISTRY = build_registry([LgDriver(), SamsungTizenDriver()])
 
 # Auto-switch trigger toggles, persisted per-name in the store (default on). "connect" = a
 # screen appears (docking or booting up docked); "wake" = it re-appears after resume; "home"

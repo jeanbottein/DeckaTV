@@ -5,6 +5,8 @@ import json
 import logging
 import ssl
 
+from tv_core.net import any_tcp_port_open
+
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 6
@@ -137,20 +139,7 @@ class WebOSClient:
 
 async def reachable(host):
     """Quick TCP probe of the webOS SSAP ports; no pairing or handshake."""
-    for port in REACH_PORTS:
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port), REACH_TIMEOUT
-            )
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except Exception:  # noqa: BLE001 - closing is best-effort
-                pass
-            return True
-        except Exception:  # noqa: BLE001 - try the next port, then report unreachable
-            continue
-    return False
+    return await any_tcp_port_open(host, REACH_PORTS, REACH_TIMEOUT)
 
 
 async def pair(host, key=""):

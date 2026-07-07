@@ -14,7 +14,7 @@ Decky loads the plugin from its root, so the files it requires there stay at the
 
 ```bash
 make venv-dev    # one-time: create .venv and install pytest (from requirements-dev.txt)
-make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_lg/tests .github/scripts/tests -q
+make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_*/tests .github/scripts/tests -q
 make build       # frontend only -> dist/index.js (rollup)
 make deploy      # build + rsync into ~/homebrew/plugins/DeckaTV on this machine
 make release     # build the distributable deckatv.zip
@@ -32,14 +32,16 @@ There is no Python linter config and no JS test suite; `make test` covers the co
 
 ## Architecture
 
-Dependencies point one way: `tv_driver_lg → tv_core`, and `main.py → both`. **The core never imports a concrete driver.** `main.py` is the composition root — it builds the driver registry (`REGISTRY = build_registry([LgDriver()])`) and is the only place that names a brand.
+Dependencies point one way: each `tv_driver_* → tv_core`, and `main.py → all`. **The core never imports a concrete driver.** `main.py` is the composition root — it builds the driver registry (`REGISTRY = build_registry([LgDriver(), SamsungTizenDriver()])`) and is the only place that names a brand.
 
 - `backend/tv_core/` — brand-agnostic core.
   - `driver.py` — the `TvDriver` contract (`pair`, `list_inputs`, `set_input`, `reachable`, plus optional `discover`) plus the registry (`build_registry`/`list_brands`/`select_driver`).
   - `store.py` — JSON-persisted state: paired TVs (`{host, name, brand, creds, mac?, inputs?}`), per-screen `rules`, and the last-selected TV. `creds` is whatever opaque JSON the driver's `pair` returned — the core never inspects it. `set_inputs` also repoints any rule whose cached input no longer exists.
   - `edid.py` — `connected_displays()` reads `/sys/class/drm`; each display's `id` is its EDID monitor name (falling back to a vendor+product code). Rules key off this EDID identity, so a rule follows the **physical TV**, not an HDMI port.
   - `wol.py` — Wake-on-LAN. MAC is learned from `/proc/net/arp` while the TV is awake (at pairing or any reachable moment) and backfilled into the store, so the TV can later be woken from standby.
+  - `ssdp.py` / `net.py` — brand-agnostic network plumbing shared by drivers: generic SSDP M-SEARCH (each driver supplies its own search target) and a TCP reachability probe.
 - `backend/tv_driver_lg/` — the LG driver. `__init__.py` is the thin `TvDriver` subclass; `webos.py` is the LG SSAP-over-WebSocket client (it imports the vendored `websockets` lazily, inside `_open`, so the package stays importable under tests without it); `discover.py` is SSDP (UPnP M-SEARCH) LAN discovery — chosen over mDNS because every webOS TV claims the same `lgwebostv.local` hostname, while SSDP has each TV reply from its own IP. All LG-specific code stays here.
+- `backend/tv_driver_samsung_tizen/` — the Samsung Tizen driver, **[BETA]**: written against the documented samsungtvws/samsungctl protocol but not verified on real hardware; its `label` carries the `[BETA]` tag so the UI shows it. `remote.py` is the Tizen remote WebSocket client (wss :8002 + token creds, plain ws :8001 on early firmware; same lazy `websockets` import as LG) plus the :8001 REST device-info probe; `inputs.py` is a fixed HDMI1–4 list mapped to `KEY_HDMI1..4` direct-select keys, since Tizen has no local list/current-source API (so `set_input` always reports "changed"); `discover.py` is SSDP filtered by the REST probe, which only Tizen (not Orsay) sets answer — brands with several OSes get one driver per OS.
 - `src/` — React UI. Generic: brand is just a dropdown populated from `list_brands`. `index.tsx` is the panel root; `api.ts` declares every backend RPC.
 - `py_modules/websockets/` — the pure-Python `websockets` dependency, **vendored** (gitignored; produced by `scripts/vendor_python.sh`, pinned version inside that script). `main.py` adds `py_modules/` and `backend/` to `sys.path` at import time.
 
