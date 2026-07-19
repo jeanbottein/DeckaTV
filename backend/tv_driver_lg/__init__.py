@@ -12,7 +12,9 @@ class LgDriver(TvDriver):
     async def discover(self):
         return await discover.discover()
 
-    async def pair(self, host):
+    async def pair(self, host, secret=""):
+        # LG pairs by an on-TV prompt, so there's no secret to enter; accept and ignore it
+        # to keep a single generic pair(host, secret) call site across all brands.
         return await webos.pair(host)
 
     async def list_inputs(self, host, creds):

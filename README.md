@@ -5,8 +5,8 @@ HDMI input from the Quick Access menu, and automatically wakes a TV and switches
 it to the right input when SteamOS connects to that screen — like HDMI-CEC, but
 over the network.
 
-The core is brand-agnostic. **LG (webOS)** ships as the first driver; other
-brands plug in without touching the rest of the code.
+The core is brand-agnostic. **LG (webOS)** and **Sony (BRAVIA)** ship as drivers;
+other brands plug in without touching the rest of the code.
 
 ## Features
 
@@ -76,11 +76,31 @@ page, extract it into `~/homebrew/plugins/`, and restart Decky.
 ## Usage
 
 1. Turn the TV on and connect it to your network.
-2. Open the plugin, pick the brand, enter the IP, press **Pair**, and accept the
-   prompt on the TV.
+2. Open the plugin, pick the brand, enter the IP, press **Pair**, and confirm on
+   the TV — LG shows an accept prompt; Sony shows a PIN you type back into the
+   plugin (see below).
 3. Use **Switch input** to change inputs manually.
 4. Under **Auto-switch rules**, pick the TV and input for each screen and enable
    the toggle.
+
+### Sony (BRAVIA) setup
+
+Sony Android/Google TVs are driven over their Scalar Web API — no PSK needed, the
+plugin uses Sony's official PIN pairing. One-time setup on the TV:
+
+1. **Settings → Network & Internet → Home network → IP control** (menu wording
+   varies by model): set **Authentication** to *Normal and Pre-Shared Key* (or
+   *Normal*) and enable **Remote start / Remote device**.
+2. Enabling **Remote start** also lets the TV wake over the network, so it can be
+   powered on for an auto-switch.
+
+Then in the plugin: pick **Sony (BRAVIA)**, enter the IP, press **Pair** — a PIN
+appears on the TV; type it into the **PIN shown on TV** field and press **Pair**
+again. Pairing stores a long-lived auth token; if it ever expires (e.g. the TV
+was off the network for weeks), just pair again.
+
+> Waking a fully powered-off Sony requires **Remote start** to be on; a set left
+> in networked standby is woken over the API automatically.
 
 ## Build from source
 

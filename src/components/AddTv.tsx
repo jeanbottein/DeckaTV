@@ -13,29 +13,61 @@ const MAX_NAME = 20;
 // and Pair never became reachable. Stash the form here and write to it *synchronously*
 // from each onChange (an effect can be torn down before it flushes, losing the pick).
 // `discoveredBrand` records which brand `discovered` belongs to so we only auto-scan when
-// the brand actually changed, not on every remount.
+// the brand actually changed, not on every remount. `pin`/`pinRequired` survive the same
+// remount: opening the on-screen keyboard to type a Sony PIN itself remounts the panel, so
+// the PIN step must persist here or it would vanish mid-entry.
 type FormCache = {
   host: string;
   name: string;
   brand: string;
   discovered: DiscoveredTv[];
   discoveredBrand: string;
+  pin: string;
+  pinRequired: boolean;
 };
-let formCache: FormCache = { host: "", name: "", brand: "", discovered: [], discoveredBrand: "" };
+let formCache: FormCache = {
+  host: "",
+  name: "",
+  brand: "",
+  discovered: [],
+  discoveredBrand: "",
+  pin: "",
+  pinRequired: false,
+};
 
 export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: string) => void }) {
   const [host, setHost] = useState(formCache.host);
   const [name, setName] = useState(formCache.name);
   const [brand, setBrand] = useState(formCache.brand);
   const [busy, setBusy] = useState(false);
+  // Sony's PIN pairing is two-phase: the first Pair press makes the TV show a code, the
+  // backend reports SONY_PIN_REQUIRED, and we reveal this field to enter it and re-pair.
+  const [pin, setPin] = useState(formCache.pin);
+  const [pinRequired, setPinRequired] = useState(formCache.pinRequired);
   const [discovered, setDiscovered] = useState<DiscoveredTv[]>(formCache.discovered);
   const [scanning, setScanning] = useState(false);
   // Bumped on every new scan and on cleanup, so a stale/cancelled scan's result is dropped.
   const scanToken = useRef(0);
 
+  // Any pending PIN belongs to one specific TV, so drop it whenever the target (host or
+  // brand) changes — otherwise a stale code would be submitted against the wrong set.
+  const resetPin = () => {
+    formCache.pin = "";
+    formCache.pinRequired = false;
+    setPin("");
+    setPinRequired(false);
+  };
+
+  const setPinField = (next: string) => {
+    const digits = next.replace(/\D/g, "").slice(0, 8);
+    formCache.pin = digits;
+    setPin(digits);
+  };
+
   const pickHost = (next: string) => {
     formCache.host = next;
     setHost(next);
+    resetPin();
   };
 
   const setNameField = (next: string) => {
@@ -107,7 +139,7 @@ export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brand]);
 
-  const canPair = Boolean(host && brand) && !busy;
+  const canPair = Boolean(host && brand) && !busy && (!pinRequired || pin.length > 0);
 
   const pair = async () => {
     if (!canPair) {
@@ -115,15 +147,37 @@ export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: 
     }
     setBusy(true);
     try {
-      const tv = await pairTv(host, name, brand);
+      // Send the PIN only once the TV has asked for it; other brands (and Sony's first
+      // press) pair with an empty secret.
+      const tv = await pairTv(host, name, brand, pinRequired ? pin : "");
       toaster.toast({ title: "TV paired", body: tv.name || tv.host });
       // Clear the cached form (keep the brand) so re-opening Add starts a fresh scan.
-      formCache = { host: "", name: "", brand, discovered: [], discoveredBrand: "" };
+      formCache = {
+        host: "",
+        name: "",
+        brand,
+        discovered: [],
+        discoveredBrand: "",
+        pin: "",
+        pinRequired: false,
+      };
       setHost("");
       setName("");
+      resetPin();
       onPaired(tv.host);
     } catch (error) {
-      toaster.toast({ title: "Pairing failed", body: String(error) });
+      // The backend's sentinel means "the TV is now showing a PIN" — reveal the field and
+      // wait for the user to enter it, rather than reporting a failure.
+      if (String(error).includes("SONY_PIN_REQUIRED")) {
+        formCache.pinRequired = true;
+        setPinRequired(true);
+        toaster.toast({
+          title: "Enter the PIN",
+          body: "A code is showing on your TV — type it below, then press Pair.",
+        });
+      } else {
+        toaster.toast({ title: "Pairing failed", body: String(error) });
+      }
     } finally {
       setBusy(false);
     }
@@ -141,6 +195,7 @@ export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: 
           onChange={(option) => {
             formCache.brand = option.data;
             setBrand(option.data);
+            resetPin();
           }}
         />
       </PanelSectionRow>
@@ -177,6 +232,15 @@ export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: 
           onChange={(event) => setNameField(event.target.value)}
         />
       </PanelSectionRow>
+      {pinRequired ? (
+        <PanelSectionRow>
+          <TextField
+            label="PIN shown on TV"
+            value={pin}
+            onChange={(event) => setPinField(event.target.value)}
+          />
+        </PanelSectionRow>
+      ) : null}
       <PanelSectionRow>
         <DialogButton
           disabled={!canPair}
@@ -190,7 +254,13 @@ export function AddTv({ brands, onPaired }: { brands: Brand[]; onPaired: (host: 
               : { width: "100%", backgroundColor: "#3d4450", color: "#9aa0a6" }
           }
         >
-          {busy ? "Accept the prompt on your TV…" : "Pair"}
+          {busy
+            ? pinRequired
+              ? "Pairing…"
+              : "Accept the prompt on your TV…"
+            : pinRequired
+              ? "Submit PIN"
+              : "Pair"}
         </DialogButton>
       </PanelSectionRow>
     </>
