@@ -24,6 +24,12 @@ REGISTER_MANIFEST = {
         # rejects the request with "401 insufficient permissions".
         "READ_RUNNING_APPS",
         "READ_APP_STATUS",
+        # Needed for audio/volumeUp|volumeDown — without it the TV rejects them as 401. Adding
+        # this after a TV was paired requires re-pairing it to grant the new permission.
+        "CONTROL_AUDIO",
+        # Needed for system/turnOff (the power-off button) — likewise 401 without it, and adding
+        # it forces a re-pair.
+        "CONTROL_POWER",
         "WRITE_SETTINGS",
     ],
 }
@@ -111,6 +117,24 @@ class WebOSClient:
     async def switch_input(self, input_id):
         await self._request("ssap://tv/switchInput", {"inputId": input_id})
 
+    async def power_off(self):
+        # Send turnOff and keep the socket open so the TV actually acts on it (closing immediately
+        # loses the command). The TV then powers off and drops the connection — usually without
+        # replying — so a dropped socket here is success, not failure. A genuine protocol error
+        # (e.g. a missing permission) still comes back as WebOSError and propagates.
+        try:
+            await self._request("ssap://system/turnOff")
+        except WebOSError:
+            raise
+        except Exception:  # noqa: BLE001 - connection closed as the TV powered off = success
+            pass
+
+    async def volume_up(self):
+        await self._request("ssap://audio/volumeUp")
+
+    async def volume_down(self):
+        await self._request("ssap://audio/volumeDown")
+
     async def current_input(self):
         """Return the id of the external input currently on screen, or None.
 
@@ -179,3 +203,21 @@ async def set_input(host, key, input_id):
             return False
         await client.switch_input(input_id)
         return True
+
+
+async def power_off(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.power_off()
+
+
+async def volume_up(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.volume_up()
+
+
+async def volume_down(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.volume_down()

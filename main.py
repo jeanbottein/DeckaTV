@@ -162,6 +162,29 @@ class Plugin:
     async def switch_input(self, host: str, input_id: str):
         await self._set_input(self.store.find_tv(host), input_id)
 
+    async def power_off_tv(self, host: str):
+        """Power the TV off now (a manual press, so unconditional). The caller (the panel) runs
+        this while the Deck is awake and the network is up, so it actually reaches the TV — unlike
+        hooking suspend, where the Wi-Fi is torn down before we could send anything."""
+        tv = self.store.find_tv(host)
+        if tv is None:
+            raise ValueError("unknown TV")
+        await select_driver(REGISTRY, tv["brand"]).power_off(tv["host"], tv["creds"])
+        decky.logger.info(f"powered off {tv['name']}")
+
+    async def volume_up(self, host: str):
+        await self._volume(host, up=True)
+
+    async def volume_down(self, host: str):
+        await self._volume(host, up=False)
+
+    async def _volume(self, host, up):
+        tv = self.store.find_tv(host)
+        if tv is None:
+            raise ValueError("unknown TV")
+        driver = select_driver(REGISTRY, tv["brand"])
+        await (driver.volume_up if up else driver.volume_down)(tv["host"], tv["creds"])
+
     async def reapply_rules(self):
         """Re-assert the input rule for every currently-connected display — the equivalent
         of a console's "One Touch Play" when you press the controller's home button.

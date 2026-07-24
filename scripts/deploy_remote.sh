@@ -6,8 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PLUGIN_NAME="DeckaTV"
-DECK_USER="${DECK_USER:-deck}"
-DECK_HOST="${DECK_HOST:-steamdeck.lan}"
+DECK_USER="${DECK_USER:-jean}"
+DECK_HOST="${DECK_HOST:-steambox.lan}"
 DEST="/home/${DECK_USER}/homebrew/plugins/${PLUGIN_NAME}"
 
 command -v pnpm >/dev/null || { echo "pnpm is required"; exit 1; }

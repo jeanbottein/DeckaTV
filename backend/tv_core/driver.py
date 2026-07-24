@@ -26,6 +26,18 @@ class TvDriver:
         """Return True if the TV at `host` answers on the network."""
         return False
 
+    async def power_off(self, host, creds):
+        """Power the TV off (standby). Optional: brands that can't just return."""
+        return
+
+    async def volume_up(self, host, creds):
+        """Nudge the TV volume up one step. Optional."""
+        return
+
+    async def volume_down(self, host, creds):
+        """Nudge the TV volume down one step. Optional."""
+        return
+
     async def discover(self):
         """Return [{host, name}] of TVs found on the LAN for this brand.
 

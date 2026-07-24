@@ -1,4 +1,4 @@
-"""Wake-on-LAN: learn a host's MAC from the local ARP table and send magic packets.
+"""Wake-on-LAN: learn a host's MAC from the local neighbor table and send magic packets.
 
 Brand-agnostic. The MAC is captured while the TV is awake (at pairing, or whenever
 it is reachable) so we can later wake it from standby the way Google Home does.
@@ -6,30 +6,48 @@ it is reachable) so we can later wake it from standby the way Google Home does.
 
 import socket
 import string
+import subprocess
+
+NEIGH_TIMEOUT = 2
 
 
-def _arp_mac(ip):
+def _neigh_mac(ip):
+    """MAC for `ip` from the kernel neighbor table (ARP for IPv4, NDP for IPv6) —
+    populated as a side effect of any traffic already exchanged with that address."""
     try:
-        with open("/proc/net/arp", encoding="ascii") as handle:
-            lines = handle.read().splitlines()
-    except OSError:
+        output = subprocess.run(
+            ["ip", "neigh", "show", ip],
+            capture_output=True, text=True, timeout=NEIGH_TIMEOUT, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
         return None
-    for line in lines[1:]:  # skip the header row
+    for line in output.splitlines():
         fields = line.split()
-        if len(fields) >= 4 and fields[0] == ip:
-            mac = fields[3]
-            if mac and mac != "00:00:00:00:00:00":
-                return mac
+        if "lladdr" in fields:
+            return fields[fields.index("lladdr") + 1]
     return None
 
 
 def resolve_mac(host):
-    """Best-effort MAC for a host already seen on the local network (via ARP)."""
+    """Best-effort MAC for a host already seen on the local network.
+
+    Resolves both IPv4 and IPv6 addresses (matching how the actual TV connections
+    resolve `host`) since a hostname-only entry may only be reachable over one family.
+    """
     try:
-        ip = socket.gethostbyname(host)
+        infos = socket.getaddrinfo(host, None)
     except OSError:
         return None
-    return _arp_mac(ip)
+    seen = set()
+    for info in infos:
+        ip = info[4][0]
+        if ip in seen:
+            continue
+        seen.add(ip)
+        mac = _neigh_mac(ip)
+        if mac and is_valid_mac(mac):
+            return mac
+    return None
 
 
 def _hex_digits(mac):

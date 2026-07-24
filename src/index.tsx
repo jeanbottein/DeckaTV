@@ -23,6 +23,8 @@ import { TvSection } from "./components/TvSection";
 import { TvManage } from "./components/TvManage";
 import { PairView } from "./components/PairView";
 import { InputSwitcher } from "./components/InputSwitcher";
+import { VolumeControls } from "./components/VolumeControls";
+import { PowerControls } from "./components/PowerControls";
 import { AutoSwitch } from "./components/AutoSwitch";
 import { TriggerSettings } from "./components/TriggerSettings";
 import { NotificationSettings } from "./components/NotificationSettings";
@@ -173,6 +175,8 @@ function Content() {
   return (
     <>
       <TvSection tvs={tvs} selectedHost={selectedHost} onSelect={selectTv} onAdd={() => setAdding(true)} />
+      {selectedTv ? <VolumeControls tv={selectedTv} /> : null}
+      {selectedTv ? <PowerControls tv={selectedTv} /> : null}
       {selectedTv ? <InputSwitcher tv={selectedTv} inputs={inputs} /> : null}
       {selectedTv ? (
         <AutoSwitch tv={selectedTv} displays={displays} rules={rules} inputs={inputs} onChanged={refresh} />

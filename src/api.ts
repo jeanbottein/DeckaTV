@@ -55,6 +55,9 @@ export const discoverTvs = callable<[brand: string], DiscoveredTv[]>("discover_t
 export const pairTv = callable<[host: string, name: string, brand: string], Tv>("pair_tv");
 export const removeTv = callable<[host: string], void>("remove_tv");
 export const switchInput = callable<[host: string, inputId: string], void>("switch_input");
+export const powerOffTv = callable<[host: string], void>("power_off_tv");
+export const volumeUp = callable<[host: string], void>("volume_up");
+export const volumeDown = callable<[host: string], void>("volume_down");
 export const setRule =
   callable<[displayId: string, host: string, inputId: string, enabled: boolean], void>("set_rule");
 export const removeRule = callable<[displayId: string], void>("remove_rule");

@@ -21,5 +21,14 @@ class LgDriver(TvDriver):
     async def set_input(self, host, creds, input_id):
         return await webos.set_input(host, creds, input_id)
 
+    async def power_off(self, host, creds):
+        return await webos.power_off(host, creds)
+
+    async def volume_up(self, host, creds):
+        return await webos.volume_up(host, creds)
+
+    async def volume_down(self, host, creds):
+        return await webos.volume_down(host, creds)
+
     async def reachable(self, host):
         return await webos.reachable(host)
