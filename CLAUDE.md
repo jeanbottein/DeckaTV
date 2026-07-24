@@ -55,7 +55,7 @@ A 5s poll diffs `connected_displays()` against the last seen set. Application is
 
 ## Adding a new brand
 
-1. Create `backend/tv_driver_<brand>/` with a `TvDriver` subclass implementing `pair`, `list_inputs`, `set_input`, `reachable` (and optionally `discover` for LAN auto-discovery), plus a unique `name` (stable id stored on each TV) and `label` (UI text).
+1. Create `backend/tv_driver_<brand>/` with a `TvDriver` subclass implementing `pair`, `list_inputs`, `set_input`, `reachable`, plus a unique `name` (stable id stored on each TV) and `label` (UI text). Optional: `discover` (LAN auto-discovery) and the `power_off`/`volume_up`/`volume_down` commands. The optional *queries* default to an honest answer (`reachable` → False, `discover` → `[]`); the optional *commands* default to raising `NotImplementedError`, since returning quietly would make the UI report a power-off or volume change that never happened.
 2. Inject it in `main.py`: `build_registry([LgDriver(), <Brand>Driver()])`.
 
 Nothing in `tv_core` or `src/` changes — the brand appears in the UI dropdown automatically.
