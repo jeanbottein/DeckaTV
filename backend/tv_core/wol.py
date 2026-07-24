@@ -9,23 +9,47 @@ import string
 import subprocess
 
 NEIGH_TIMEOUT = 2
+NULL_MAC_DIGITS = "0" * 12
+
+
+def _run_neigh(ip):
+    """Raw `ip neigh show <ip>` output, or "" if the command is unavailable or times out."""
+    try:
+        return subprocess.run(
+            ["ip", "neigh", "show", ip],
+            capture_output=True, text=True, timeout=NEIGH_TIMEOUT, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _lladdr(line):
+    """The value after the `lladdr` keyword of one `ip neigh` row, or None.
+
+    An entry in an INCOMPLETE/FAILED state has no address after the keyword, so the
+    index is bounds-checked rather than assumed.
+    """
+    fields = line.split()
+    if "lladdr" not in fields:
+        return None
+    value = fields.index("lladdr") + 1
+    return fields[value] if value < len(fields) else None
 
 
 def _neigh_mac(ip):
     """MAC for `ip` from the kernel neighbor table (ARP for IPv4, NDP for IPv6) —
     populated as a side effect of any traffic already exchanged with that address."""
+    candidates = map(_lladdr, _run_neigh(ip).splitlines())
+    return next((mac for mac in candidates if mac), None)
+
+
+def _addresses(host):
+    """Every address `host` resolves to, deduplicated, in resolution order."""
     try:
-        output = subprocess.run(
-            ["ip", "neigh", "show", ip],
-            capture_output=True, text=True, timeout=NEIGH_TIMEOUT, check=False,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    for line in output.splitlines():
-        fields = line.split()
-        if "lladdr" in fields:
-            return fields[fields.index("lladdr") + 1]
-    return None
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return []
+    return list(dict.fromkeys(info[4][0] for info in infos))
 
 
 def resolve_mac(host):
@@ -34,20 +58,8 @@ def resolve_mac(host):
     Resolves both IPv4 and IPv6 addresses (matching how the actual TV connections
     resolve `host`) since a hostname-only entry may only be reachable over one family.
     """
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
-        return None
-    seen = set()
-    for info in infos:
-        ip = info[4][0]
-        if ip in seen:
-            continue
-        seen.add(ip)
-        mac = _neigh_mac(ip)
-        if mac and is_valid_mac(mac):
-            return mac
-    return None
+    macs = map(_neigh_mac, _addresses(host))
+    return next((mac for mac in macs if mac and is_valid_mac(mac)), None)
 
 
 def _hex_digits(mac):
@@ -55,7 +67,12 @@ def _hex_digits(mac):
 
 
 def is_valid_mac(mac):
+    """True for a MAC we could actually wake. The all-zero address is rejected: an
+    incomplete neighbor entry reports it, and caching it as the TV's MAC is permanent
+    (the backfill only runs while no MAC is recorded), leaving the TV unwakeable."""
     digits = _hex_digits(mac)
+    if digits == NULL_MAC_DIGITS:
+        return False
     return len(digits) == 12 and all(char in string.hexdigits for char in digits)
 
 

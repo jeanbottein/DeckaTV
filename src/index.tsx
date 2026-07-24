@@ -177,7 +177,9 @@ function Content() {
       <TvSection tvs={tvs} selectedHost={selectedHost} onSelect={selectTv} onAdd={() => setAdding(true)} />
       {selectedTv ? <VolumeControls tv={selectedTv} /> : null}
       {selectedTv ? <PowerControls tv={selectedTv} /> : null}
-      {selectedTv ? <InputSwitcher tv={selectedTv} inputs={inputs} /> : null}
+      {/* Keyed by host so switching TVs remounts the switcher and re-seeds it from that TV's
+          remembered pick, instead of carrying the previous TV's selection across. */}
+      {selectedTv ? <InputSwitcher key={selectedTv.host} tv={selectedTv} inputs={inputs} /> : null}
       {selectedTv ? (
         <AutoSwitch tv={selectedTv} displays={displays} rules={rules} inputs={inputs} onChanged={refresh} />
       ) : null}

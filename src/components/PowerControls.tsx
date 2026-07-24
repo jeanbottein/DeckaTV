@@ -4,9 +4,9 @@ import { useState } from "react";
 import { powerOffTv, tvLabel, type Tv } from "../api";
 
 // Powering the TV off has to happen while the Deck is awake and on the network — doing it during
-// OS suspend loses the race with Wi-Fi teardown. So these are explicit buttons: "Turn off TV"
-// powers the TV down now; "Sleep TV + Deck" powers it down first, then suspends the Deck once the
-// TV is confirmed off (so the order is guaranteed and the command actually lands).
+// OS suspend loses the race with Wi-Fi teardown. So these are explicit buttons: "Suspend TV"
+// powers the TV down now; "Suspend computer + TV" powers it down first, then suspends the Deck
+// once the TV is confirmed off (so the order is guaranteed and the command actually lands).
 export function PowerControls({ tv }: { tv: Tv }) {
   const [busy, setBusy] = useState(false);
 

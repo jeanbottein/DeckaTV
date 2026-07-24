@@ -74,3 +74,12 @@ def test_clear_empties_the_log_but_keeps_the_file(tmp_path):
 
 def test_clear_handles_empty_dir(tmp_path):
     clear_logs(str(tmp_path))
+
+
+def test_clear_leaves_non_log_files_alone(tmp_path):
+    # Reading falls back to any file so the viewer is never blank, but truncating must not:
+    # the log dir is not ours alone, and emptying an unknown file is unrecoverable.
+    other = tmp_path / "settings.json"
+    _write(other, '{"keep": "me"}')
+    clear_logs(str(tmp_path))
+    assert other.read_text() == '{"keep": "me"}'

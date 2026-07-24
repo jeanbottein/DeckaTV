@@ -166,24 +166,24 @@ class Plugin:
         """Power the TV off now (a manual press, so unconditional). The caller (the panel) runs
         this while the Deck is awake and the network is up, so it actually reaches the TV — unlike
         hooking suspend, where the Wi-Fi is torn down before we could send anything."""
-        tv = self.store.find_tv(host)
-        if tv is None:
-            raise ValueError("unknown TV")
-        await select_driver(REGISTRY, tv["brand"]).power_off(tv["host"], tv["creds"])
+        tv, driver = self._resolve(host)
+        await driver.power_off(tv["host"], tv["creds"])
         decky.logger.info(f"powered off {tv['name']}")
 
     async def volume_up(self, host: str):
-        await self._volume(host, up=True)
+        tv, driver = self._resolve(host)
+        await driver.volume_up(tv["host"], tv["creds"])
 
     async def volume_down(self, host: str):
-        await self._volume(host, up=False)
+        tv, driver = self._resolve(host)
+        await driver.volume_down(tv["host"], tv["creds"])
 
-    async def _volume(self, host, up):
+    def _resolve(self, host):
+        """The paired TV and its driver, for commands that must fail loudly when it's unknown."""
         tv = self.store.find_tv(host)
         if tv is None:
             raise ValueError("unknown TV")
-        driver = select_driver(REGISTRY, tv["brand"])
-        await (driver.volume_up if up else driver.volume_down)(tv["host"], tv["creds"])
+        return tv, select_driver(REGISTRY, tv["brand"])
 
     async def reapply_rules(self):
         """Re-assert the input rule for every currently-connected display — the equivalent
