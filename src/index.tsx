@@ -69,40 +69,47 @@ function Content() {
     snapshot = { tvs, displays, rules, selectedHost, inputs };
   }, [tvs, displays, rules, selectedHost, inputs]);
 
-  // Fetch the fast local-store state and apply the setters common to both loads; returns the
-  // bits each caller resolves differently. No live TV round-trip, so the panel stays snappy.
-  const loadCore = async () => {
-    const [nextTvs, nextDisplays, nextRules, saved] = await Promise.all([
+  // Read the fast local-store state. Pure fetch, no setters, so a caller that has since
+  // unmounted can drop the result. No live TV round-trip either, so the panel stays snappy.
+  const fetchCore = async () => {
+    const [tvs, displays, rules, saved] = await Promise.all([
       listTvs(),
       listDisplays(),
       listRules(),
       getSelectedTv(),
     ]);
-    setTvs(nextTvs);
-    setDisplays(nextDisplays);
-    setRules(nextRules);
-    return { nextTvs, saved };
+    return { tvs, displays, rules, saved };
+  };
+
+  type Core = Awaited<ReturnType<typeof fetchCore>>;
+
+  const applyCore = (core: Core) => {
+    setTvs(core.tvs);
+    setDisplays(core.displays);
+    setRules(core.rules);
   };
 
   const refresh = async () => {
-    const { nextTvs, saved } = await loadCore();
-    setSelectedHost((current) => pickSelected(nextTvs, saved, current));
+    const core = await fetchCore();
+    applyCore(core);
+    setSelectedHost((current) => pickSelected(core.tvs, core.saved, current));
   };
 
   useEffect(() => {
     listBrands().then(setBrands);
     let active = true;
-    // Initial load: gate only on the fast local store reads (see loadCore), so the panel
+    // Initial load: gate only on the fast local store reads (see fetchCore), so the panel
     // reveals immediately. Seed the Manual switch from the cached inputs that already travel
     // with each TV; the polling effect refreshes it from the TV in the background. Blocking
     // the whole UI on getInputs() here cost ~2s on every open.
     (async () => {
       try {
-        const { nextTvs, saved } = await loadCore();
+        const core = await fetchCore();
         if (!active) return;
-        const host = pickSelected(nextTvs, saved, "");
+        applyCore(core);
+        const host = pickSelected(core.tvs, core.saved, "");
         setSelectedHost(host);
-        const cached = nextTvs.find((tv) => tv.host === host)?.inputs ?? [];
+        const cached = core.tvs.find((tv) => tv.host === host)?.inputs ?? [];
         if (cached.length) setInputs(cached);
       } catch {
         /* fall through to reveal the UI anyway */

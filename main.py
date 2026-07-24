@@ -205,16 +205,21 @@ class Plugin:
         # delay. Fold present into `seen` so _drain — which only acts on seen displays — fires.
         appeared = present - self.seen
         self.seen |= present
-        queued = []
-        for rule in self.store.rules:
-            did = rule["display_id"]
-            if not rule.get("enabled") or did not in present:
-                continue
-            self._queue(did, now + SETTLE_SECONDS if did in appeared else now, now)
-            queued.append(did)
-        if queued:
-            decky.logger.info(f"reapply requested for {queued}")
-            self._drain(now)
+        queued = self._enabled_displays(present)
+        if not queued:
+            return
+        for display_id in queued:
+            self._queue(display_id, now + SETTLE_SECONDS if display_id in appeared else now, now)
+        decky.logger.info(f"reapply requested for {queued}")
+        self._drain(now)
+
+    def _enabled_displays(self, present):
+        """Display ids with an enabled rule that are currently connected."""
+        return [
+            rule["display_id"]
+            for rule in self.store.rules
+            if rule.get("enabled") and rule["display_id"] in present
+        ]
 
     async def set_rule(self, display_id: str, host: str, input_id: str, enabled: bool):
         self.store.set_rule(display_id, host, input_id, enabled)
@@ -316,15 +321,14 @@ class Plugin:
         trigger for why it appeared (connect/wake) is switched off."""
         if not self.store.trigger_enabled(reason):
             return
-        for rule in self.store.rules:
-            did = rule["display_id"]
-            if not rule.get("enabled") or did not in appeared:
-                continue
-            # Debounce the link flap a switch itself can cause: ignore a re-appearance that
-            # lands within COOLDOWN_SECONDS of this display's last *successful* switch.
-            if now - self.last_success.get(did, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS:
-                continue
-            self._queue(did, now + SETTLE_SECONDS, now)
+        candidates = self._enabled_displays(appeared)
+        for display_id in (did for did in candidates if not self._in_cooldown(did, now)):
+            self._queue(display_id, now + SETTLE_SECONDS, now)
+
+    def _in_cooldown(self, display_id, now):
+        """Debounce the link flap a switch itself can cause: a re-appearance landing within
+        COOLDOWN_SECONDS of this display's last *successful* switch is the flap, not a dock."""
+        return now - self.last_success.get(display_id, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS
 
     def _queue(self, did, after, now):
         """Queue a display for switch attempts until APPLY_BUDGET_SECONDS elapses, never pulling

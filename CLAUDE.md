@@ -14,7 +14,7 @@ Decky loads the plugin from its root, so the files it requires there stay at the
 
 ```bash
 make venv-dev    # one-time: create .venv and install pytest (from requirements-dev.txt)
-make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_lg/tests .github/scripts/tests -q
+make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_lg/tests tests .github/scripts/tests -q
 make build       # frontend only -> dist/index.js (rollup)
 make deploy      # build + rsync into ~/homebrew/plugins/DeckaTV on this machine
 make release     # build the distributable deckatv.zip
@@ -28,7 +28,7 @@ PYTHONPATH=backend python3 -m pytest backend/tv_core/tests/test_driver.py::<name
 DECK_HOST=192.168.1.50 ./scripts/deploy_remote.sh
 ```
 
-There is no Python linter config and no JS test suite; `make test` covers the core library and the release-version tooling only. `scripts/pair_test.py` is a manual, network-dependent smoke script (pairs against a real TV), not part of `make test`. The build/deploy scripts (`scripts/*.sh`) `cd` to the repo root themselves, so they can be run from anywhere.
+There is no Python linter config and no JS test suite; `make test` covers the core library, the release-version tooling, and `main.py`'s auto-switch scheduling (root `tests/`, whose `conftest.py` stubs the Decky-injected `decky` module so `main.py` imports off-device). `scripts/pair_test.py` is a manual, network-dependent smoke script (pairs against a real TV), not part of `make test`. The build/deploy scripts (`scripts/*.sh`) `cd` to the repo root themselves, so they can be run from anywhere.
 
 ## Architecture
 
