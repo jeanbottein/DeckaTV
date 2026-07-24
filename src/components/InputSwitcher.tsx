@@ -1,11 +1,25 @@
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { switchInput, type Input, type Tv } from "../api";
 
+// Decky remounts the Quick Access content whenever a dropdown overlay closes, which would reset
+// this component's picked input back to the first one the moment you choose. Persist the pick
+// per-TV in a module-level cache (written synchronously on select) so it survives the remount —
+// the same trick the Add-TV form uses.
+const lastPick: Record<string, string> = {};
+
 export function InputSwitcher({ tv, inputs }: { tv: Tv; inputs: Input[] }) {
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(lastPick[tv.host] ?? "");
   const [busy, setBusy] = useState(false);
+
+  const choose = useCallback(
+    (id: string) => {
+      lastPick[tv.host] = id;
+      setSelected(id);
+    },
+    [tv.host],
+  );
 
   // Keep the current pick if it still exists, else fall back to the first input.
   // Ignore an empty list so a transient refresh can't wipe the selection.
@@ -13,8 +27,10 @@ export function InputSwitcher({ tv, inputs }: { tv: Tv; inputs: Input[] }) {
     if (inputs.length === 0) {
       return;
     }
-    setSelected((cur) => (inputs.some((input) => input.id === cur) ? cur : inputs[0]?.id ?? ""));
-  }, [inputs]);
+    if (!inputs.some((input) => input.id === selected)) {
+      choose(inputs[0]?.id ?? "");
+    }
+  }, [inputs, selected, choose]);
 
   const send = async () => {
     if (!selected) {
@@ -36,7 +52,7 @@ export function InputSwitcher({ tv, inputs }: { tv: Tv; inputs: Input[] }) {
     return (
       <PanelSection>
         <PanelSectionRow>
-          <Field label="MANUAL SWITCH" bottomSeparator="none" />
+          <Field label="INPUT SWITCH" bottomSeparator="none" />
         </PanelSectionRow>
         <PanelSectionRow>No inputs found — make sure the TV is on.</PanelSectionRow>
       </PanelSection>
@@ -55,7 +71,7 @@ export function InputSwitcher({ tv, inputs }: { tv: Tv; inputs: Input[] }) {
           selectedOption={selected}
           bottomSeparator="none"
           childrenContainerWidth="max"
-          onChange={(option) => setSelected(option.data)}
+          onChange={(option) => choose(option.data)}
         />
       </PanelSectionRow>
       <PanelSectionRow>

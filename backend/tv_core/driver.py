@@ -26,6 +26,23 @@ class TvDriver:
         """Return True if the TV at `host` answers on the network."""
         return False
 
+    # Optional commands. Unlike the optional *queries* below — which answer honestly with
+    # "unreachable" / "found nothing" — a command has no such answer, so an unimplemented one
+    # raises. Returning quietly would report success for an action that never happened: the
+    # plugin logs "powered off <tv>" and the panel toasts it.
+
+    async def power_off(self, host, creds):
+        """Power the TV off (standby). Optional; raises if the brand can't."""
+        raise NotImplementedError(f"{self.label or self.name} cannot be powered off")
+
+    async def volume_up(self, host, creds):
+        """Nudge the TV volume up one step. Optional; raises if the brand can't."""
+        raise NotImplementedError(f"{self.label or self.name} has no volume control")
+
+    async def volume_down(self, host, creds):
+        """Nudge the TV volume down one step. Optional; raises if the brand can't."""
+        raise NotImplementedError(f"{self.label or self.name} has no volume control")
+
     async def discover(self):
         """Return [{host, name}] of TVs found on the LAN for this brand.
 

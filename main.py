@@ -100,6 +100,12 @@ class Plugin:
     async def set_trigger(self, name: str, enabled: bool):
         self.store.set_trigger(name, enabled)
 
+    async def get_notifications(self):
+        return self.store.notifications
+
+    async def set_notifications(self, enabled: bool):
+        self.store.set_notifications(enabled)
+
     async def list_displays(self):
         return connected_displays()
 
@@ -156,6 +162,29 @@ class Plugin:
     async def switch_input(self, host: str, input_id: str):
         await self._set_input(self.store.find_tv(host), input_id)
 
+    async def power_off_tv(self, host: str):
+        """Power the TV off now (a manual press, so unconditional). The caller (the panel) runs
+        this while the Deck is awake and the network is up, so it actually reaches the TV — unlike
+        hooking suspend, where the Wi-Fi is torn down before we could send anything."""
+        tv, driver = self._resolve(host)
+        await driver.power_off(tv["host"], tv["creds"])
+        decky.logger.info(f"powered off {tv['name']}")
+
+    async def volume_up(self, host: str):
+        tv, driver = self._resolve(host)
+        await driver.volume_up(tv["host"], tv["creds"])
+
+    async def volume_down(self, host: str):
+        tv, driver = self._resolve(host)
+        await driver.volume_down(tv["host"], tv["creds"])
+
+    def _resolve(self, host):
+        """The paired TV and its driver, for commands that must fail loudly when it's unknown."""
+        tv = self.store.find_tv(host)
+        if tv is None:
+            raise ValueError("unknown TV")
+        return tv, select_driver(REGISTRY, tv["brand"])
+
     async def reapply_rules(self):
         """Re-assert the input rule for every currently-connected display — the equivalent
         of a console's "One Touch Play" when you press the controller's home button.
@@ -176,20 +205,21 @@ class Plugin:
         # delay. Fold present into `seen` so _drain — which only acts on seen displays — fires.
         appeared = present - self.seen
         self.seen |= present
-        queued = []
-        for rule in self.store.rules:
-            did = rule["display_id"]
-            if not rule.get("enabled") or did not in present:
-                continue
-            after = now + SETTLE_SECONDS if did in appeared else now
-            existing = self.pending.get(did)
-            if existing is not None:
-                after = max(after, existing["after"])
-            self.pending[did] = {"after": after, "deadline": now + APPLY_BUDGET_SECONDS}
-            queued.append(did)
-        if queued:
-            decky.logger.info(f"reapply requested for {queued}")
-            self._drain(now)
+        queued = self._enabled_displays(present)
+        if not queued:
+            return
+        for display_id in queued:
+            self._queue(display_id, now + SETTLE_SECONDS if display_id in appeared else now, now)
+        decky.logger.info(f"reapply requested for {queued}")
+        self._drain(now)
+
+    def _enabled_displays(self, present):
+        """Display ids with an enabled rule that are currently connected."""
+        return [
+            rule["display_id"]
+            for rule in self.store.rules
+            if rule.get("enabled") and rule["display_id"] in present
+        ]
 
     async def set_rule(self, display_id: str, host: str, input_id: str, enabled: bool):
         self.store.set_rule(display_id, host, input_id, enabled)
@@ -291,15 +321,22 @@ class Plugin:
         trigger for why it appeared (connect/wake) is switched off."""
         if not self.store.trigger_enabled(reason):
             return
-        for rule in self.store.rules:
-            did = rule["display_id"]
-            if not rule.get("enabled") or did not in appeared:
-                continue
-            # Debounce the link flap a switch itself can cause: ignore a re-appearance that
-            # lands within COOLDOWN_SECONDS of this display's last *successful* switch.
-            if now - self.last_success.get(did, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS:
-                continue
-            self.pending[did] = {"after": now + SETTLE_SECONDS, "deadline": now + APPLY_BUDGET_SECONDS}
+        candidates = self._enabled_displays(appeared)
+        for display_id in (did for did in candidates if not self._in_cooldown(did, now)):
+            self._queue(display_id, now + SETTLE_SECONDS, now)
+
+    def _in_cooldown(self, display_id, now):
+        """Debounce the link flap a switch itself can cause: a re-appearance landing within
+        COOLDOWN_SECONDS of this display's last *successful* switch is the flap, not a dock."""
+        return now - self.last_success.get(display_id, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS
+
+    def _queue(self, did, after, now):
+        """Queue a display for switch attempts until APPLY_BUDGET_SECONDS elapses, never pulling
+        an already-queued attempt earlier than it was scheduled."""
+        scheduled = self.pending.get(did)
+        if scheduled is not None:
+            after = max(after, scheduled["after"])
+        self.pending[did] = {"after": after, "deadline": now + APPLY_BUDGET_SECONDS}
 
     def _drain(self, now):
         """Attempt each queued rule once per poll until it succeeds or its budget expires."""

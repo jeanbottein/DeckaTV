@@ -1,5 +1,5 @@
-import { PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
-import { addEventListener, definePlugin, removeEventListener, toaster } from "@decky/api";
+import { Focusable, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
+import { addEventListener, definePlugin, removeEventListener } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaTv } from "react-icons/fa";
 import {
@@ -9,7 +9,9 @@ import {
   listDisplays,
   listRules,
   listTvs,
+  getNotifications,
   reapplyRules,
+  safeCall,
   setSelectedTv,
   type Brand,
   type Display,
@@ -21,9 +23,13 @@ import { TvSection } from "./components/TvSection";
 import { TvManage } from "./components/TvManage";
 import { PairView } from "./components/PairView";
 import { InputSwitcher } from "./components/InputSwitcher";
+import { VolumeControls } from "./components/VolumeControls";
+import { PowerControls } from "./components/PowerControls";
 import { AutoSwitch } from "./components/AutoSwitch";
 import { TriggerSettings } from "./components/TriggerSettings";
+import { NotificationSettings } from "./components/NotificationSettings";
 import { Logs } from "./components/Logs";
+import { notify, setNotify } from "./notify";
 
 const sameInputs = (a: Input[], b: Input[]) =>
   a.length === b.length && a.every((item, i) => item.id === b[i].id && item.label === b[i].label);
@@ -63,41 +69,47 @@ function Content() {
     snapshot = { tvs, displays, rules, selectedHost, inputs };
   }, [tvs, displays, rules, selectedHost, inputs]);
 
-  const refresh = async () => {
-    const [nextTvs, nextDisplays, nextRules, saved] = await Promise.all([
+  // Read the fast local-store state. Pure fetch, no setters, so a caller that has since
+  // unmounted can drop the result. No live TV round-trip either, so the panel stays snappy.
+  const fetchCore = async () => {
+    const [tvs, displays, rules, saved] = await Promise.all([
       listTvs(),
       listDisplays(),
       listRules(),
       getSelectedTv(),
     ]);
-    setTvs(nextTvs);
-    setDisplays(nextDisplays);
-    setRules(nextRules);
-    setSelectedHost((current) => pickSelected(nextTvs, saved, current));
+    return { tvs, displays, rules, saved };
+  };
+
+  type Core = Awaited<ReturnType<typeof fetchCore>>;
+
+  const applyCore = (core: Core) => {
+    setTvs(core.tvs);
+    setDisplays(core.displays);
+    setRules(core.rules);
+  };
+
+  const refresh = async () => {
+    const core = await fetchCore();
+    applyCore(core);
+    setSelectedHost((current) => pickSelected(core.tvs, core.saved, current));
   };
 
   useEffect(() => {
     listBrands().then(setBrands);
     let active = true;
-    // Initial load: gate only on the fast local store reads (no live TV round-trip), so
-    // the panel reveals immediately. Seed the Manual switch from the cached inputs that
-    // already travel with each TV; the polling effect refreshes it from the TV in the
-    // background. Blocking the whole UI on getInputs() here cost ~2s on every open.
+    // Initial load: gate only on the fast local store reads (see fetchCore), so the panel
+    // reveals immediately. Seed the Manual switch from the cached inputs that already travel
+    // with each TV; the polling effect refreshes it from the TV in the background. Blocking
+    // the whole UI on getInputs() here cost ~2s on every open.
     (async () => {
       try {
-        const [nextTvs, nextDisplays, nextRules, saved] = await Promise.all([
-          listTvs(),
-          listDisplays(),
-          listRules(),
-          getSelectedTv(),
-        ]);
+        const core = await fetchCore();
         if (!active) return;
-        setTvs(nextTvs);
-        setDisplays(nextDisplays);
-        setRules(nextRules);
-        const host = pickSelected(nextTvs, saved, "");
+        applyCore(core);
+        const host = pickSelected(core.tvs, core.saved, "");
         setSelectedHost(host);
-        const cached = nextTvs.find((tv) => tv.host === host)?.inputs ?? [];
+        const cached = core.tvs.find((tv) => tv.host === host)?.inputs ?? [];
         if (cached.length) setInputs(cached);
       } catch {
         /* fall through to reveal the UI anyway */
@@ -170,11 +182,31 @@ function Content() {
   return (
     <>
       <TvSection tvs={tvs} selectedHost={selectedHost} onSelect={selectTv} onAdd={() => setAdding(true)} />
-      {selectedTv ? <InputSwitcher tv={selectedTv} inputs={inputs} /> : null}
+      {/* Volume and power share one section and one flex column, so every gap between these
+          buttons is the same 8px — PanelSectionRow would pad each child separately and space
+          the power buttons further apart than the volume pair. */}
+      {selectedTv ? (
+        <PanelSection>
+          <PanelSectionRow>
+            <Focusable style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <VolumeControls tv={selectedTv} />
+              <PowerControls tv={selectedTv} />
+            </Focusable>
+          </PanelSectionRow>
+        </PanelSection>
+      ) : null}
+      {/* Keyed by host so switching TVs remounts the switcher and re-seeds it from that TV's
+          remembered pick, instead of carrying the previous TV's selection across. */}
+      {selectedTv ? <InputSwitcher key={selectedTv.host} tv={selectedTv} inputs={inputs} /> : null}
       {selectedTv ? (
         <AutoSwitch tv={selectedTv} displays={displays} rules={rules} inputs={inputs} onChanged={refresh} />
       ) : null}
-      {rules.some((rule) => rule.enabled) ? <TriggerSettings /> : null}
+      {rules.some((rule) => rule.enabled) ? (
+        <>
+          <TriggerSettings />
+          <NotificationSettings />
+        </>
+      ) : null}
       <PanelSection>
         <TvManage tvs={tvs} selectedHost={selectedHost} onChanged={refresh} />
         <Logs />
@@ -187,9 +219,13 @@ export default definePlugin(() => {
   const listener = addEventListener<[name: string, inputId: string]>(
     "auto_switch",
     (name, inputId) => {
-      toaster.toast({ title: "TV input switched", body: `${name} → ${inputId}` });
+      notify({ title: "TV input switched", body: `${name} → ${inputId}` });
     },
   );
+
+  // Seed the toast flag once at session start so the listener above honours the setting even if
+  // the panel is never opened. The in-panel toggle keeps this same module-level flag in sync.
+  safeCall(() => getNotifications().then(setNotify));
 
   // "One Touch Play", like a console's home button: pressing the controller's central Steam/Guide
   // button re-asserts the docked TV's input. RegisterForSystemKeyEvents reports that button as
@@ -201,17 +237,10 @@ export default definePlugin(() => {
   // coalesces the press/release pair and rapid re-presses. Registered here (not in the panel,
   // which only exists while the QAM is open) so it lives for the whole session.
   const steamClient = (window as unknown as { SteamClient?: any }).SteamClient;
-  // Fully guarded: a stale backend missing reapply_rules must NEVER break plugin load. A callable
-  // can surface "unknown method" synchronously, so wrap the call itself — not just the returned
-  // promise — or the throw escapes definePlugin and the whole plugin fails to import (Error:
-  // unknown method … in PluginLoader.importReactPlugin).
-  const safe = (run: () => Promise<unknown> | undefined) => {
-    try {
-      void run()?.catch(() => {});
-    } catch {
-      /* stale/mismatched backend — ignore */
-    }
-  };
+  // reapplyRules is fully guarded via safeCall: a stale backend missing it must NEVER break
+  // plugin load. A callable can surface "unknown method" synchronously, so safeCall wraps the
+  // call itself — not just the returned promise — or the throw escapes definePlugin and the
+  // whole plugin fails to import (Error: unknown method … in PluginLoader.importReactPlugin).
   const STEAM_BUTTON_KEY = 0; // eKey for the central Steam/Guide button (eKey=1 is Quick Access)
   let lastReapply = 0;
   const onSystemKey = (event: { eKey?: number }) => {
@@ -219,7 +248,7 @@ export default definePlugin(() => {
     const now = Date.now();
     if (now - lastReapply < 3000) return;
     lastReapply = now;
-    safe(() => reapplyRules());
+    safeCall(() => reapplyRules());
   };
   let keyReg: { unregister?: () => void } | undefined;
   try {

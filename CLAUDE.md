@@ -14,7 +14,7 @@ Decky loads the plugin from its root, so the files it requires there stay at the
 
 ```bash
 make venv-dev    # one-time: create .venv and install pytest (from requirements-dev.txt)
-make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_lg/tests .github/scripts/tests -q
+make test        # unit tests: PYTHONPATH=backend pytest backend/tv_core/tests backend/tv_driver_lg/tests tests .github/scripts/tests -q
 make build       # frontend only -> dist/index.js (rollup)
 make deploy      # build + rsync into ~/homebrew/plugins/DeckaTV on this machine
 make release     # build the distributable deckatv.zip
@@ -28,7 +28,7 @@ PYTHONPATH=backend python3 -m pytest backend/tv_core/tests/test_driver.py::<name
 DECK_HOST=192.168.1.50 ./scripts/deploy_remote.sh
 ```
 
-There is no Python linter config and no JS test suite; `make test` covers the core library and the release-version tooling only. `scripts/pair_test.py` is a manual, network-dependent smoke script (pairs against a real TV), not part of `make test`. The build/deploy scripts (`scripts/*.sh`) `cd` to the repo root themselves, so they can be run from anywhere.
+There is no Python linter config and no JS test suite; `make test` covers the core library, the release-version tooling, and `main.py`'s auto-switch scheduling (root `tests/`, whose `conftest.py` stubs the Decky-injected `decky` module so `main.py` imports off-device). `scripts/pair_test.py` is a manual, network-dependent smoke script (pairs against a real TV), not part of `make test`. The build/deploy scripts (`scripts/*.sh`) `cd` to the repo root themselves, so they can be run from anywhere.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ A 5s poll diffs `connected_displays()` against the last seen set. Application is
 
 ## Adding a new brand
 
-1. Create `backend/tv_driver_<brand>/` with a `TvDriver` subclass implementing `pair`, `list_inputs`, `set_input`, `reachable` (and optionally `discover` for LAN auto-discovery), plus a unique `name` (stable id stored on each TV) and `label` (UI text).
+1. Create `backend/tv_driver_<brand>/` with a `TvDriver` subclass implementing `pair`, `list_inputs`, `set_input`, `reachable`, plus a unique `name` (stable id stored on each TV) and `label` (UI text). Optional: `discover` (LAN auto-discovery) and the `power_off`/`volume_up`/`volume_down` commands. The optional *queries* default to an honest answer (`reachable` → False, `discover` → `[]`); the optional *commands* default to raising `NotImplementedError`, since returning quietly would make the UI report a power-off or volume change that never happened.
 2. Inject it in `main.py`: `build_registry([LgDriver(), <Brand>Driver()])`.
 
 Nothing in `tv_core` or `src/` changes — the brand appears in the UI dropdown automatically.

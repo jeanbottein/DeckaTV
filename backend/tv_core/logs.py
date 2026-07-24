@@ -42,8 +42,12 @@ def read_log_tail(log_dir, max_lines):
 
 def clear_logs(log_dir):
     """Empty the plugin's log file(s) in place so the viewer can start fresh. Truncating
-    keeps the file the running logger already holds open (its next line appends to the top)."""
-    for path in _readable_files(log_dir):
+    keeps the file the running logger already holds open (its next line appends to the top).
+
+    Only *.log, unlike the reader's any-file fallback: reading an unknown file is harmless,
+    emptying one is not.
+    """
+    for path in _log_files(log_dir):
         try:
             with open(path, "w", encoding="utf-8"):
                 pass

@@ -12,6 +12,10 @@ PAIR_TIMEOUT = 60
 REQUEST_TIMEOUT = 10
 REACH_TIMEOUT = 2
 REACH_PORTS = (3001, 3000)
+# turnOff usually kills the TV mid-reply, so an ack is the exception rather than the rule.
+# Hold the socket open just long enough for the TV to act on the command, then stop waiting —
+# blocking the full REQUEST_TIMEOUT would freeze the panel's button on the normal path.
+POWER_OFF_ACK_TIMEOUT = 2
 
 REGISTER_MANIFEST = {
     "manifestVersion": 1,
@@ -24,6 +28,12 @@ REGISTER_MANIFEST = {
         # rejects the request with "401 insufficient permissions".
         "READ_RUNNING_APPS",
         "READ_APP_STATUS",
+        # Needed for audio/volumeUp|volumeDown — without it the TV rejects them as 401. Adding
+        # this after a TV was paired requires re-pairing it to grant the new permission.
+        "CONTROL_AUDIO",
+        # Needed for system/turnOff (the power-off button) — likewise 401 without it, and adding
+        # it forces a re-pair.
+        "CONTROL_POWER",
         "WRITE_SETTINGS",
     ],
 }
@@ -31,6 +41,20 @@ REGISTER_MANIFEST = {
 
 class WebOSError(Exception):
     pass
+
+
+def _disconnect_errors():
+    """Exception types meaning "the socket went away", which for a power-off is success.
+
+    `websockets` is resolved lazily (like the client import) so this module stays importable
+    without the vendored copy; the socket-level types still apply when it's absent.
+    """
+    socket_level = (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, EOFError)
+    try:
+        from websockets.exceptions import ConnectionClosed
+    except ImportError:
+        return socket_level
+    return socket_level + (ConnectionClosed,)
 
 
 def _insecure_ssl():
@@ -111,6 +135,26 @@ class WebOSClient:
     async def switch_input(self, input_id):
         await self._request("ssap://tv/switchInput", {"inputId": input_id})
 
+    async def power_off(self):
+        """Ask the TV to power off.
+
+        The socket stays open past the send so the TV actually acts on the command (closing
+        immediately loses it), but only until POWER_OFF_ACK_TIMEOUT: the TV normally powers off
+        mid-reply, so silence and a dropped socket are the expected outcomes and both count as
+        success. A protocol error (WebOSError — e.g. CONTROL_POWER not granted at pairing) and
+        anything unexpected still propagate, so a bug can't masquerade as a successful power-off.
+        """
+        try:
+            await asyncio.wait_for(self._request("ssap://system/turnOff"), POWER_OFF_ACK_TIMEOUT)
+        except _disconnect_errors():
+            pass
+
+    async def volume_up(self):
+        await self._request("ssap://audio/volumeUp")
+
+    async def volume_down(self):
+        await self._request("ssap://audio/volumeDown")
+
     async def current_input(self):
         """Return the id of the external input currently on screen, or None.
 
@@ -179,3 +223,21 @@ async def set_input(host, key, input_id):
             return False
         await client.switch_input(input_id)
         return True
+
+
+async def power_off(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.power_off()
+
+
+async def volume_up(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.volume_up()
+
+
+async def volume_down(host, key):
+    async with WebOSClient(host) as client:
+        await client.register(key)
+        await client.volume_down()
