@@ -12,6 +12,10 @@ PAIR_TIMEOUT = 60
 REQUEST_TIMEOUT = 10
 REACH_TIMEOUT = 2
 REACH_PORTS = (3001, 3000)
+# turnOff usually kills the TV mid-reply, so an ack is the exception rather than the rule.
+# Hold the socket open just long enough for the TV to act on the command, then stop waiting —
+# blocking the full REQUEST_TIMEOUT would freeze the panel's button on the normal path.
+POWER_OFF_ACK_TIMEOUT = 2
 
 REGISTER_MANIFEST = {
     "manifestVersion": 1,
@@ -37,6 +41,20 @@ REGISTER_MANIFEST = {
 
 class WebOSError(Exception):
     pass
+
+
+def _disconnect_errors():
+    """Exception types meaning "the socket went away", which for a power-off is success.
+
+    `websockets` is resolved lazily (like the client import) so this module stays importable
+    without the vendored copy; the socket-level types still apply when it's absent.
+    """
+    socket_level = (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, EOFError)
+    try:
+        from websockets.exceptions import ConnectionClosed
+    except ImportError:
+        return socket_level
+    return socket_level + (ConnectionClosed,)
 
 
 def _insecure_ssl():
@@ -118,15 +136,17 @@ class WebOSClient:
         await self._request("ssap://tv/switchInput", {"inputId": input_id})
 
     async def power_off(self):
-        # Send turnOff and keep the socket open so the TV actually acts on it (closing immediately
-        # loses the command). The TV then powers off and drops the connection — usually without
-        # replying — so a dropped socket here is success, not failure. A genuine protocol error
-        # (e.g. a missing permission) still comes back as WebOSError and propagates.
+        """Ask the TV to power off.
+
+        The socket stays open past the send so the TV actually acts on the command (closing
+        immediately loses it), but only until POWER_OFF_ACK_TIMEOUT: the TV normally powers off
+        mid-reply, so silence and a dropped socket are the expected outcomes and both count as
+        success. A protocol error (WebOSError — e.g. CONTROL_POWER not granted at pairing) and
+        anything unexpected still propagate, so a bug can't masquerade as a successful power-off.
+        """
         try:
-            await self._request("ssap://system/turnOff")
-        except WebOSError:
-            raise
-        except Exception:  # noqa: BLE001 - connection closed as the TV powered off = success
+            await asyncio.wait_for(self._request("ssap://system/turnOff"), POWER_OFF_ACK_TIMEOUT)
+        except _disconnect_errors():
             pass
 
     async def volume_up(self):

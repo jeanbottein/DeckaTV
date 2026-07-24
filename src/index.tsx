@@ -1,4 +1,4 @@
-import { PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
+import { Focusable, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
 import { addEventListener, definePlugin, removeEventListener } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaTv } from "react-icons/fa";
@@ -182,8 +182,19 @@ function Content() {
   return (
     <>
       <TvSection tvs={tvs} selectedHost={selectedHost} onSelect={selectTv} onAdd={() => setAdding(true)} />
-      {selectedTv ? <VolumeControls tv={selectedTv} /> : null}
-      {selectedTv ? <PowerControls tv={selectedTv} /> : null}
+      {/* Volume and power share one section and one flex column, so every gap between these
+          buttons is the same 8px — PanelSectionRow would pad each child separately and space
+          the power buttons further apart than the volume pair. */}
+      {selectedTv ? (
+        <PanelSection>
+          <PanelSectionRow>
+            <Focusable style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <VolumeControls tv={selectedTv} />
+              <PowerControls tv={selectedTv} />
+            </Focusable>
+          </PanelSectionRow>
+        </PanelSection>
+      ) : null}
       {/* Keyed by host so switching TVs remounts the switcher and re-seeds it from that TV's
           remembered pick, instead of carrying the previous TV's selection across. */}
       {selectedTv ? <InputSwitcher key={selectedTv.host} tv={selectedTv} inputs={inputs} /> : null}

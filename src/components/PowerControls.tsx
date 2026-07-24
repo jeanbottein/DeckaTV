@@ -1,4 +1,4 @@
-import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
+import { DialogButton } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useState } from "react";
 import { powerOffTv, tvLabel, type Tv } from "../api";
@@ -46,18 +46,16 @@ export function PowerControls({ tv }: { tv: Tv }) {
     }
   };
 
+  // Bare buttons, not PanelSectionRows: a row wraps each child in its own padding, which spaced
+  // these further apart than the volume pair. The panel stacks all of them at one uniform gap.
   return (
-    <PanelSection>
-      <PanelSectionRow>
-        <ButtonItem layout="below" bottomSeparator="none" disabled={busy} onClick={onTurnOff}>
-          Suspend TV
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem layout="below" bottomSeparator="none" disabled={busy} onClick={onSleepBoth}>
-          Suspend computer + TV
-        </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
+    <>
+      <DialogButton disabled={busy} onClick={onTurnOff}>
+        Suspend TV
+      </DialogButton>
+      <DialogButton disabled={busy} onClick={onSleepBoth}>
+        Suspend computer + TV
+      </DialogButton>
+    </>
   );
 }
