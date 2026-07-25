@@ -52,7 +52,8 @@ export const setNotifications = callable<[enabled: boolean], void>("set_notifica
 export const listDisplays = callable<[], Display[]>("list_displays");
 export const getInputs = callable<[host: string], Input[]>("get_inputs");
 export const discoverTvs = callable<[brand: string], DiscoveredTv[]>("discover_tvs");
-export const pairTv = callable<[host: string, name: string, brand: string], Tv>("pair_tv");
+export const pairTv =
+  callable<[host: string, name: string, brand: string, secret: string], Tv>("pair_tv");
 export const removeTv = callable<[host: string], void>("remove_tv");
 export const switchInput = callable<[host: string, inputId: string], void>("switch_input");
 export const powerOffTv = callable<[host: string], void>("power_off_tv");

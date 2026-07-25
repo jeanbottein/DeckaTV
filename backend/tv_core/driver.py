@@ -9,8 +9,15 @@ class TvDriver:
     name = ""  # stable brand id stored on each TV record
     label = ""  # human-readable brand name shown in the UI
 
-    async def pair(self, host):
-        """Pair with the TV at `host` and return opaque, JSON-serializable creds."""
+    async def pair(self, host, secret=""):
+        """Pair with the TV at `host` and return opaque, JSON-serializable creds.
+
+        `secret` is an optional, brand-specific second factor entered by the user (e.g. a
+        PIN shown on a Sony TV). Brands that pair by an on-TV prompt alone (like LG) ignore
+        it. A driver may raise to signal it needs the secret: a driver whose error message is
+        the agreed sentinel (see the Sony driver's SONY_PIN_REQUIRED) tells the UI to collect
+        the secret and call pair again with it.
+        """
         raise NotImplementedError
 
     async def list_inputs(self, host, creds):

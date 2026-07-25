@@ -16,6 +16,7 @@ from tv_core.logs import clear_logs, prune_logs, read_log_tail
 from tv_core.store import Store
 from tv_core.wol import is_valid_mac, resolve_mac, send_magic_packet
 from tv_driver_lg import LgDriver
+from tv_driver_sony import SonyDriver
 
 POLL_SECONDS = 5
 LOG_TAIL_LINES = 200
@@ -51,7 +52,7 @@ RESUME_THRESHOLD = 10
 # Keep the vendored websockets library from writing chatty connection logs.
 logging.getLogger("websockets").setLevel(logging.WARNING)
 
-REGISTRY = build_registry([LgDriver()])
+REGISTRY = build_registry([LgDriver(), SonyDriver()])
 
 # Auto-switch trigger toggles, persisted per-name in the store (default on). "connect" = a
 # screen appears (docking or booting up docked); "wake" = it re-appears after resume; "home"
@@ -150,8 +151,8 @@ class Plugin:
         except Exception:  # noqa: BLE001 - discovery is best-effort; the UI still allows manual entry
             return []
 
-    async def pair_tv(self, host: str, name: str, brand: str):
-        creds = await select_driver(REGISTRY, brand).pair(host)
+    async def pair_tv(self, host: str, name: str, brand: str, secret: str = ""):
+        creds = await select_driver(REGISTRY, brand).pair(host, secret)
         label = name or host
         self.store.upsert_tv(host, label, brand, creds, resolve_mac(host))
         return {"host": host, "name": label, "brand": brand}
