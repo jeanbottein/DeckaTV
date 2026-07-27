@@ -77,11 +77,14 @@ def is_valid_mac(mac):
 
 
 def send_magic_packet(mac, port=9):
-    """Broadcast a Wake-on-LAN magic packet for `mac`. Returns False if mac is malformed."""
+    """Broadcast a Wake-on-LAN magic packet for `mac`. Returns False if mac is malformed or send fails."""
     if not is_valid_mac(mac):
         return False
     payload = b"\xff" * 6 + bytes.fromhex(_hex_digits(mac)) * 16
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(payload, ("255.255.255.255", port))
-    return True
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.sendto(payload, ("255.255.255.255", port))
+        return True
+    except OSError:
+        return False

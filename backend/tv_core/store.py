@@ -28,9 +28,16 @@ class Store:
         return data if isinstance(data, dict) else None
 
     def _save(self):
-        os.makedirs(os.path.dirname(self._path), exist_ok=True)
-        with open(self._path, "w", encoding="utf-8") as handle:
-            json.dump(self._data, handle, indent=2)
+        dir_path = os.path.dirname(self._path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        tmp_path = f"{self._path}.tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump(self._data, handle, indent=2)
+            os.replace(tmp_path, self._path)
+        except OSError:
+            pass
 
     @property
     def tvs(self):
