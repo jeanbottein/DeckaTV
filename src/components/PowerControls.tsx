@@ -3,9 +3,9 @@ import { toaster } from "@decky/api";
 import { useState } from "react";
 import { powerOffTv, tvLabel, type Tv } from "../api";
 
-// Powering the TV off has to happen while the Deck is awake and on the network — doing it during
+// Powering the TV off has to happen while the machine is awake and on the network — doing it during
 // OS suspend loses the race with Wi-Fi teardown. So these are explicit buttons: "Suspend TV"
-// powers the TV down now; "Suspend computer + TV" powers it down first, then suspends the Deck
+// powers the TV down now; "Suspend machine + TV" powers it down first, then suspends the machine
 // once the TV is confirmed off (so the order is guaranteed and the command actually lands).
 export function PowerControls({ tv }: { tv: Tv }) {
   const [busy, setBusy] = useState(false);
@@ -54,7 +54,7 @@ export function PowerControls({ tv }: { tv: Tv }) {
         Suspend TV
       </DialogButton>
       <DialogButton disabled={busy} onClick={onSleepBoth}>
-        Suspend computer + TV
+        Suspend machine + TV
       </DialogButton>
     </>
   );

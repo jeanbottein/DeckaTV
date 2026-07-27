@@ -1,6 +1,8 @@
 """Unit tests for the auto-switch queue: which displays get queued, when an attempt may
 run, and the post-switch debounce. Pure bookkeeping — no store, driver, or network."""
 
+import asyncio
+
 import pytest
 
 import main
@@ -8,8 +10,13 @@ from main import APPLY_BUDGET_SECONDS, COOLDOWN_SECONDS
 
 
 class FakeStore:
-    def __init__(self, rules):
+    def __init__(self, rules, pause_when_streaming=True, triggers=()):
         self.rules = rules
+        self.pause_when_streaming = pause_when_streaming
+        self._triggers = dict(triggers)
+
+    def trigger_enabled(self, name):
+        return self._triggers.get(name, True)
 
 
 def _rule(display_id, enabled=True):
@@ -21,8 +28,17 @@ def plugin():
     instance = main.Plugin()
     instance.pending = {}
     instance.last_success = {}
+    instance.seen = set()
+    instance.inflight = set()
+    instance.streaming = False
+    instance._resumed = False
     instance.store = FakeStore([])
     return instance
+
+
+@pytest.fixture
+def one_connected_display(monkeypatch):
+    monkeypatch.setattr(main, "connected_displays", lambda: [{"id": "HDMI-1"}])
 
 
 def test_queue_records_the_requested_time_and_a_budget_deadline(plugin):
@@ -79,3 +95,73 @@ def test_enabled_displays_skips_a_disconnected_display(plugin):
 
 def test_enabled_displays_is_empty_without_rules(plugin):
     assert plugin._enabled_displays({"HDMI-1"}) == []
+
+
+def test_not_paused_while_nothing_is_streaming(plugin):
+    assert plugin._paused_by_streaming() is False
+
+
+def test_paused_while_a_session_streams_from_this_machine(plugin):
+    asyncio.run(plugin.set_streaming(True))
+    assert plugin._paused_by_streaming() is True
+
+
+def test_the_session_ending_resumes_auto_switch(plugin):
+    asyncio.run(plugin.set_streaming(True))
+    asyncio.run(plugin.set_streaming(False))
+    assert plugin._paused_by_streaming() is False
+
+
+def test_never_paused_when_the_setting_is_off(plugin):
+    plugin.store = FakeStore([], pause_when_streaming=False)
+    asyncio.run(plugin.set_streaming(True))
+    assert plugin._paused_by_streaming() is False
+
+
+def test_the_indicator_reports_the_pause(plugin):
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin.set_streaming(True))
+    assert asyncio.run(plugin.auto_switch_paused()) is True
+
+
+def test_the_indicator_stays_quiet_when_no_rule_could_have_fired(plugin):
+    asyncio.run(plugin.set_streaming(True))
+    assert asyncio.run(plugin.auto_switch_paused()) is False
+
+
+def test_the_indicator_stays_quiet_when_every_rule_is_disabled(plugin):
+    plugin.store = FakeStore([_rule("HDMI-1", enabled=False)])
+    asyncio.run(plugin.set_streaming(True))
+    assert asyncio.run(plugin.auto_switch_paused()) is False
+
+
+def test_the_first_poll_after_a_resume_reads_as_the_wake_trigger(plugin):
+    plugin._resumed = True
+    assert plugin._take_reason() == "wake"
+
+
+def test_the_resume_flag_is_consumed_once(plugin):
+    plugin._resumed = True
+    plugin._take_reason()
+    assert plugin._take_reason() == "connect"
+
+
+def test_an_appearing_display_is_queued_when_nothing_is_streaming(plugin, one_connected_display):
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin._apply_rules())
+    assert "HDMI-1" in plugin.pending
+
+
+def test_a_streaming_session_drops_the_queue_instead_of_switching(plugin, one_connected_display):
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    plugin.pending = {"HDMI-1": {"after": 0, "deadline": 1e9}}
+    asyncio.run(plugin.set_streaming(True))
+    asyncio.run(plugin._apply_rules())
+    assert plugin.pending == {}
+
+
+def test_a_paused_poll_leaves_the_resume_flag_for_the_next_one(plugin, one_connected_display):
+    plugin._resumed = True
+    asyncio.run(plugin.set_streaming(True))
+    asyncio.run(plugin._apply_rules())
+    assert plugin._resumed is True

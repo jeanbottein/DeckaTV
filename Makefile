@@ -23,7 +23,7 @@ build: ## Build frontend
 release: ## Build the distributable zip
 	@bash scripts/build_release.sh
 
-deploy: ## Build and install onto a local Deck
+deploy: ## Build and install onto a local machine
 	@bash scripts/deploy.sh
 
 test: ## Run unit tests (core + release tooling); run `make venv-dev` first

@@ -1,6 +1,5 @@
 import { DialogButton, DropdownItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { tvLabel, type Tv } from "../api";
-import { ReachabilityIndicator } from "./ReachabilityIndicator";
 
 interface TvSectionProps {
   tvs: Tv[];
@@ -10,7 +9,6 @@ interface TvSectionProps {
 }
 
 export function TvSection({ tvs, selectedHost, onSelect, onAdd }: TvSectionProps) {
-  const selected = tvs.find((tv) => tv.host === selectedHost);
   if (tvs.length === 0) {
     return null;
   }
@@ -46,23 +44,6 @@ export function TvSection({ tvs, selectedHost, onSelect, onAdd }: TvSectionProps
           </DialogButton>
         </div>
       </PanelSectionRow>
-      {selected && selected.name ? (
-        <PanelSectionRow>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              fontSize: "0.8em",
-              opacity: 0.6,
-              paddingBottom: "8px",
-            }}
-          >
-            <span style={{ fontWeight: "bold", marginRight: "6px" }}>Address</span>
-            <span>{selected.host}</span>
-            <ReachabilityIndicator host={selected.host} />
-          </div>
-        </PanelSectionRow>
-      ) : null}
     </PanelSection>
   );
 }
