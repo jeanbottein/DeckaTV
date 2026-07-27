@@ -17,6 +17,7 @@ class Store:
         self._data.setdefault("selected", "")
         self._data.setdefault("triggers", {})
         self._data.setdefault("notifications", True)
+        self._data.setdefault("pause_when_streaming", True)
 
     def _read(self):
         try:
@@ -66,6 +67,15 @@ class Store:
 
     def set_notifications(self, enabled):
         self._data["notifications"] = bool(enabled)
+        self._save()
+
+    @property
+    def pause_when_streaming(self):
+        """Whether a live Remote Play session suppresses auto-switch. Defaults on."""
+        return self._data.get("pause_when_streaming", True)
+
+    def set_pause_when_streaming(self, enabled):
+        self._data["pause_when_streaming"] = bool(enabled)
         self._save()
 
     def find_tv(self, host):

@@ -30,7 +30,7 @@ function LogsModal({ closeModal }: { closeModal?: () => void }) {
     <ModalRoot onCancel={closeModal} onEscKeypress={closeModal} bAllowFullSize>
       <div style={{ fontSize: "1.3em", fontWeight: "bold", paddingBottom: "8px" }}>DeckaTV logs</div>
       {/* A Focusable so the gamepad can reach and scroll it — a plain overflow div can't take
-          focus, which is why the old inline viewer wouldn't scroll on the Deck. */}
+          focus, which is why the old inline viewer wouldn't scroll on the machine. */}
       <Focusable
         style={{
           height: "58vh",

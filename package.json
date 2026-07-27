@@ -1,7 +1,7 @@
 {
   "name": "deckatv",
   "version": "1.0.0",
-  "description": "Pair and control network TVs from the Steam Deck, with auto HDMI input switching on dock. Pluggable per-brand drivers.",
+  "description": "Pair and control network TVs from your Steam machine, with auto HDMI input switching on dock. Pluggable per-brand drivers.",
   "type": "module",
   "scripts": {
     "build": "rollup -c",

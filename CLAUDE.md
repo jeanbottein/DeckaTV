@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-DeckaTV is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for the Steam Deck. It pairs with network TVs, switches their HDMI input from the Quick Access menu, and auto-switches a TV to a chosen input when the Deck is docked to that specific physical screen. A Python backend (`main.py` + `backend/`) talks to TVs and the OS; a React frontend (`src/`) is the Quick Access panel. The two communicate over Decky's `callable` RPC bridge (see `src/api.ts` ↔ the `async def` methods on `Plugin` in `main.py`).
+DeckaTV is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for SteamOS machines (a Steam Deck, a Steam Machine, or a custom build). It pairs with network TVs, switches their HDMI input from the Quick Access menu, and auto-switches a TV to a chosen input when the machine is docked to that specific physical screen. A Python backend (`main.py` + `backend/`) talks to TVs and the OS; a React frontend (`src/`) is the Quick Access panel. The two communicate over Decky's `callable` RPC bridge (see `src/api.ts` ↔ the `async def` methods on `Plugin` in `main.py`).
 
 ### Layout
 
@@ -24,7 +24,7 @@ pnpm run watch   # rebuild the frontend on change
 PYTHONPATH=backend python3 -m pytest backend/tv_core/tests/test_store.py -q
 PYTHONPATH=backend python3 -m pytest backend/tv_core/tests/test_driver.py::<name> -q
 
-# deploy to a Deck over SSH (defaults: deck@steamdeck.lan)
+# deploy to a machine over SSH (defaults: deck@steamdeck.lan)
 DECK_HOST=192.168.1.50 ./scripts/deploy_remote.sh
 ```
 
@@ -51,6 +51,7 @@ A 5s poll diffs `connected_displays()` against the last seen set. Application is
 - `APPLY_BUDGET_SECONDS` — how long a queued rule keeps getting retried (each poll) before giving up. Covers slow Wi-Fi association on boot and slow TV wake.
 - `COOLDOWN_SECONDS` — an input switch can make the link flap and look like the display reappearing; a re-appearance within this window of the last *successful* switch is ignored (debounce).
 - Suspend/resume: the process is frozen during sleep, so the docked display never appears to "leave and return." `_suspended_seconds()` compares `CLOCK_BOOTTIME` vs `CLOCK_MONOTONIC`; a jump past `RESUME_THRESHOLD` means we resumed, so `seen`/`pending`/`last_success` are cleared to re-queue and re-apply rules on wake.
+- Remote Play: auto-switch is paused while a session streams *from* the machine (the player is elsewhere in the house, so switching would grab the TV from whoever is watching it). Only the frontend can see `SteamClient.RemotePlay`, and Decky's RPC is frontend→backend only, so the backend can't ask at trigger time — `src/streaming.ts` pushes the state over `set_streaming` **on change only**, no polling or heartbeat. A missed "session stopped" would strand the pause, so three things undo it: `resyncStreaming()` on every panel open, `_watch` clearing the flag on resume (a session can't survive suspend), and the panel's `StreamingIndicator` making a live pause visible rather than silent. The flag is never persisted, so a plugin restart also fails open. Suppression is not deferral: rules skipped during a session are dropped, not replayed when it ends.
 - `_wake` Wake-on-LANs an unreachable TV (burst of magic packets) and waits up to `WAKE_TIMEOUT` for the control API; it opportunistically re-resolves the MAC from ARP if one was never learned. A TV with no resolvable MAC, or wake-over-LAN disabled, simply won't wake.
 
 ## Adding a new brand

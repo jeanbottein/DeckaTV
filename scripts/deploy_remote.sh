@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and install the plugin onto a Steam Deck over SSH.
+# Build and install the plugin onto a Steam Machine over SSH.
 # Override the target with env vars, e.g. DECK_HOST=192.168.1.50 ./scripts/deploy_remote.sh
 set -euo pipefail
 
@@ -42,7 +42,7 @@ find "$STAGING" -type d -name __pycache__ -prune -exec rm -rf {} +
 # Multiplex one SSH connection so the password is typed once: the first ssh
 # opens a master connection (and creates the dest dir), then rsync reuses it
 # without re-prompting.
-echo "Syncing to ${DECK_USER}@${DECK_HOST}:${DEST} (enter the Deck password when prompted)..."
+echo "Syncing to ${DECK_USER}@${DECK_HOST}:${DEST} (enter the machine password when prompted)..."
 SSH_CTRL="$(mktemp -u)"
 trap 'ssh -o ControlPath="$SSH_CTRL" -O exit "${DECK_USER}@${DECK_HOST}" 2>/dev/null || true' EXIT
 ssh -o ControlMaster=auto -o ControlPath="$SSH_CTRL" -o ControlPersist=60 \
@@ -52,4 +52,4 @@ rsync -rv --delete \
   -e "ssh -o ControlPath='${SSH_CTRL}'" \
   "$STAGING/" "${DECK_USER}@${DECK_HOST}:${DEST// /\\ }/"
 
-echo "Done. Restart Decky (or reload the plugin) on the Deck to pick up changes."
+echo "Done. Restart Decky (or reload the plugin) on the machine to pick up changes."

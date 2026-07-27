@@ -28,7 +28,7 @@ SETTLE_SECONDS = 5
 # flapping link can't machine-gun switches.
 COOLDOWN_SECONDS = 60
 # A newly-appeared display usually isn't actionable the instant it shows up: on cold boot
-# the Deck's Wi-Fi isn't connected yet, and a TV woken from standby needs a moment before
+# the machine's Wi-Fi isn't connected yet, and a TV woken from standby needs a moment before
 # its control API answers. So rather than fire once and give up (which loses the switch
 # whenever the network or TV is a beat slow — the cause of flaky dock-on-boot/resume), we
 # keep re-attempting the rule on each poll until the switch lands or this budget elapses.
@@ -70,6 +70,11 @@ class Plugin:
         self.last_success = {}  # display_id -> monotonic time of the last successful switch
         self.tasks = set()  # spawned attempts, kept alive and cancellable on unload
         self._resumed = False  # set when _watch detects a resume; tags the next poll as "wake"
+        # Whether a Remote Play session is streaming from this machine. Only the frontend can see
+        # SteamClient, so it pushes this on change (see src/streaming.ts). Never persisted, and
+        # cleared on resume, so every way of losing track of it fails *open* — auto-switch comes
+        # back rather than staying disabled for good.
+        self.streaming = False
         self.watcher = asyncio.get_event_loop().create_task(self._watch())
 
     async def _unload(self):
@@ -99,6 +104,28 @@ class Plugin:
 
     async def set_trigger(self, name: str, enabled: bool):
         self.store.set_trigger(name, enabled)
+
+    async def set_streaming(self, active: bool):
+        """The frontend reporting whether a Remote Play session is streaming from this machine."""
+        self.streaming = bool(active)
+
+    async def auto_switch_paused(self):
+        """What the panel's indicator shows. Needs a rule that could actually have fired, or the
+        indicator would claim a pause on an install where nothing was going to switch anyway."""
+        return self._paused_by_streaming() and self._has_enabled_rule()
+
+    def _has_enabled_rule(self):
+        return any(rule.get("enabled") for rule in self.store.rules)
+
+    async def get_pause_when_streaming(self):
+        return self.store.pause_when_streaming
+
+    async def set_pause_when_streaming(self, enabled: bool):
+        self.store.set_pause_when_streaming(enabled)
+
+    def _paused_by_streaming(self):
+        """Whether a live Remote Play session currently holds the TV off-limits."""
+        return self.streaming and self.store.pause_when_streaming
 
     async def get_notifications(self):
         return self.store.notifications
@@ -164,7 +191,7 @@ class Plugin:
 
     async def power_off_tv(self, host: str):
         """Power the TV off now (a manual press, so unconditional). The caller (the panel) runs
-        this while the Deck is awake and the network is up, so it actually reaches the TV — unlike
+        this while the machine is awake and the network is up, so it actually reaches the TV — unlike
         hooking suspend, where the Wi-Fi is torn down before we could send anything."""
         tv, driver = self._resolve(host)
         await driver.power_off(tv["host"], tv["creds"])
@@ -196,8 +223,9 @@ class Plugin:
         earlier than the watch loop scheduled it; a steady, already-seen display switches
         right away. The driver no-ops when the TV is already on the target input, so pressing
         repeatedly is cheap. Reuses the drain/attempt path, so retries, wake, and the
-        one-attempt-per-display guard all still apply."""
-        if not self.store.trigger_enabled("home"):
+        one-attempt-per-display guard all still apply. A live Remote Play session still wins:
+        that press comes from a remote controller, so its user isn't at the TV either."""
+        if not self.store.trigger_enabled("home") or self._paused_by_streaming():
             return
         now = time.monotonic()
         present = {display["id"] for display in connected_displays()}
@@ -272,6 +300,9 @@ class Plugin:
                 self.seen = set()
                 self.pending.clear()
                 self.last_success.clear()
+                # A Remote Play session can't survive the machine suspending, so any flag still set
+                # is stale. Clearing it here is the safety net for a missed "session stopped".
+                self.streaming = False
                 self._resumed = True  # tag the next poll's re-appearances as the "wake" trigger
             suspended = now_suspended
             last_error = await self._poll(last_error)
@@ -300,15 +331,26 @@ class Plugin:
         # the appearance lost the switch whenever the network or TV wasn't ready in that one
         # window — exactly the case on cold boot, and often on resume.
         now = time.monotonic()
-        # A re-appearance right after a resume is the "wake" trigger; any other is "connect"
-        # (docking or booting up docked). _enqueue skips the batch if that trigger is off.
-        # Consume the resume flag only once the displays are read, so a failed poll retries as
-        # "wake" rather than downgrading to "connect".
         appeared = self._take_appeared()
-        reason = "wake" if self._resumed else "connect"
-        self._resumed = False
+        if self._paused_by_streaming():
+            # Someone is streaming from this machine, so they're not at the TV: leave its input
+            # alone. Drop the queue too, or a rule queued moments before the session started
+            # would still land mid-stream. `seen` stays current (it was just refreshed), so
+            # ending the session doesn't make every display look newly docked — but the resume
+            # flag is left unconsumed, so a "wake" isn't silently downgraded by a paused poll.
+            self.pending.clear()
+            return
+        reason = self._take_reason()
         self._enqueue(appeared, now, reason)
         self._drain(now)
+
+    def _take_reason(self):
+        """Why displays appeared this poll: "wake" right after a resume, "connect" otherwise
+        (docking or booting up docked). Consumed only once the displays have been read, so a
+        failed poll retries as "wake" rather than downgrading to "connect"."""
+        reason = "wake" if self._resumed else "connect"
+        self._resumed = False
+        return reason
 
     def _take_appeared(self):
         present = {display["id"] for display in connected_displays()}

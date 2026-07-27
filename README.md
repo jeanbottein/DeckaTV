@@ -16,6 +16,8 @@ brands plug in without touching the rest of the code.
   When that screen appears — at boot, on resume, or when the TV reconnects — the
   TV is woken over the network (Wake-on-LAN) and switched to the chosen input
   automatically.
+- Auto-switch pauses while a Steam Remote Play session streams *from* this
+  machine: the player is elsewhere, so the TV is left to whoever is watching it.
 
 ## Architecture
 

@@ -55,3 +55,20 @@ def test_set_notifications_persists_across_instances(tmp_path):
     path = tmp_path / "store.json"
     Store(str(path)).set_notifications(False)
     assert Store(str(path)).notifications is False
+
+
+def test_pause_when_streaming_defaults_to_enabled(tmp_path):
+    assert _store(tmp_path).pause_when_streaming is True
+
+
+def test_pause_when_streaming_defaults_to_enabled_for_an_existing_install(tmp_path):
+    """A store written before the setting existed must still read as enabled."""
+    path = tmp_path / "store.json"
+    path.write_text('{"tvs": [], "rules": [], "selected": ""}', encoding="utf-8")
+    assert Store(str(path)).pause_when_streaming is True
+
+
+def test_set_pause_when_streaming_persists_across_instances(tmp_path):
+    path = tmp_path / "store.json"
+    Store(str(path)).set_pause_when_streaming(False)
+    assert Store(str(path)).pause_when_streaming is False

@@ -29,7 +29,9 @@ import { AutoSwitch } from "./components/AutoSwitch";
 import { TriggerSettings } from "./components/TriggerSettings";
 import { NotificationSettings } from "./components/NotificationSettings";
 import { Logs } from "./components/Logs";
+import { TvStatus } from "./components/TvStatus";
 import { notify, setNotify } from "./notify";
+import { resyncStreaming, watchStreaming } from "./streaming";
 
 const sameInputs = (a: Input[], b: Input[]) =>
   a.length === b.length && a.every((item, i) => item.id === b[i].id && item.label === b[i].label);
@@ -97,6 +99,11 @@ function Content() {
 
   useEffect(() => {
     listBrands().then(setBrands);
+    // Re-push the live Remote Play state on every mount. The watcher pushes on change only, so
+    // this is what repairs the backend's view if an event was ever missed. Decky remounts this
+    // content on dropdown open/close as well as on panel open, but the push is an idempotent
+    // bool that rides along with the four loads below — no background timer, no extra round trip.
+    resyncStreaming();
     let active = true;
     // Initial load: gate only on the fast local store reads (see fetchCore), so the panel
     // reveals immediately. Seed the Manual switch from the cached inputs that already travel
@@ -211,6 +218,7 @@ function Content() {
         <TvManage tvs={tvs} selectedHost={selectedHost} onChanged={refresh} />
         <Logs />
       </PanelSection>
+      {selectedTv ? <TvStatus tv={selectedTv} /> : null}
     </>
   );
 }
@@ -257,6 +265,10 @@ export default definePlugin(() => {
     console.error("[deckatv] system-key hook setup failed", error);
   }
 
+  // Registered here, not in the panel, for the same reason as the key hook: a Remote Play
+  // session must be observed for the whole session, not only while the QAM happens to be open.
+  const stopWatchingStreaming = watchStreaming();
+
   return {
     // Identity must match plugin.json's name (Decky keys the install/settings/log dirs off
     // it) — kept space-free so the plugin folder has no spaces. The panel title below is the
@@ -268,6 +280,7 @@ export default definePlugin(() => {
     onDismount() {
       removeEventListener("auto_switch", listener);
       keyReg?.unregister?.();
+      stopWatchingStreaming();
     },
   };
 });
