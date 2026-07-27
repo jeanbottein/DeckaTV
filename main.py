@@ -167,7 +167,9 @@ class Plugin:
         if inputs:
             self.store.set_inputs(host, inputs)
             if not tv.get("mac"):  # backfill the MAC for Wake-on-LAN while the TV is up
-                self.store.set_mac(host, resolve_mac(host))
+                mac = await asyncio.to_thread(resolve_mac, host)
+                if mac:
+                    self.store.set_mac(host, mac)
             return inputs
         return self.store.cached_inputs(host)
 
@@ -181,7 +183,8 @@ class Plugin:
     async def pair_tv(self, host: str, name: str, brand: str):
         creds = await select_driver(REGISTRY, brand).pair(host)
         label = name or host
-        self.store.upsert_tv(host, label, brand, creds, resolve_mac(host))
+        mac = await asyncio.to_thread(resolve_mac, host)
+        self.store.upsert_tv(host, label, brand, creds, mac)
         return {"host": host, "name": label, "brand": brand}
 
     async def remove_tv(self, host: str):
@@ -274,7 +277,7 @@ class Plugin:
             return True
         mac = tv.get("mac")
         if not mac:  # never learned it (e.g. paired while offline) — the ARP table may be ready now
-            mac = resolve_mac(tv["host"])
+            mac = await asyncio.to_thread(resolve_mac, tv["host"])
             if mac and is_valid_mac(mac):
                 self.store.set_mac(tv["host"], mac)
         if not mac or not is_valid_mac(mac):  # can't wake without a usable MAC
