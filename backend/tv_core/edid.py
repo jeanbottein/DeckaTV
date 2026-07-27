@@ -50,8 +50,14 @@ def _identity(edid):
 
 def connected_displays():
     """Return [{connector, id}] for every connected display with a readable EDID."""
+    if not os.path.isdir(DRM_PATH):
+        return []
     displays = []
-    for connector in sorted(os.listdir(DRM_PATH)):
+    try:
+        connectors = sorted(os.listdir(DRM_PATH))
+    except OSError:
+        return []
+    for connector in connectors:
         if _read_text(os.path.join(DRM_PATH, connector, "status")) != "connected":
             continue
         edid = _read_edid(connector)

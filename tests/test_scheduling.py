@@ -118,10 +118,17 @@ def test_never_paused_when_the_setting_is_off(plugin):
     assert plugin._paused_by_streaming() is False
 
 
-def test_the_indicator_reports_the_pause(plugin):
+def test_the_indicator_reports_the_pause(plugin, one_connected_display):
     plugin.store = FakeStore([_rule("HDMI-1")])
     asyncio.run(plugin.set_streaming(True))
     assert asyncio.run(plugin.auto_switch_paused()) is True
+
+
+def test_the_indicator_stays_quiet_when_no_display_is_connected(plugin, monkeypatch):
+    monkeypatch.setattr(main, "connected_displays", lambda: [])
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin.set_streaming(True))
+    assert asyncio.run(plugin.auto_switch_paused()) is False
 
 
 def test_the_indicator_stays_quiet_when_no_rule_could_have_fired(plugin):
@@ -160,8 +167,21 @@ def test_a_streaming_session_drops_the_queue_instead_of_switching(plugin, one_co
     assert plugin.pending == {}
 
 
-def test_a_paused_poll_leaves_the_resume_flag_for_the_next_one(plugin, one_connected_display):
+def test_a_paused_poll_clears_the_resume_flag_cleanly(plugin, one_connected_display):
     plugin._resumed = True
     asyncio.run(plugin.set_streaming(True))
     asyncio.run(plugin._apply_rules())
-    assert plugin._resumed is True
+    assert plugin._resumed is False
+
+
+def test_ending_streaming_resumes_normal_polling_for_new_appearances(plugin, monkeypatch):
+    monkeypatch.setattr(main, "connected_displays", lambda: [])
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin.set_streaming(True))
+    asyncio.run(plugin._apply_rules())  # poll while streaming (no displays connected)
+
+    # Streaming ends and a new display connects
+    asyncio.run(plugin.set_streaming(False))
+    monkeypatch.setattr(main, "connected_displays", lambda: [{"id": "HDMI-1"}])
+    asyncio.run(plugin._apply_rules())
+    assert "HDMI-1" in plugin.pending

@@ -110,12 +110,13 @@ class Plugin:
         self.streaming = bool(active)
 
     async def auto_switch_paused(self):
-        """What the panel's indicator shows. Needs a rule that could actually have fired, or the
-        indicator would claim a pause on an install where nothing was going to switch anyway."""
-        return self._paused_by_streaming() and self._has_enabled_rule()
+        """What the panel's indicator shows. Needs an enabled rule matching a connected display,
+        or the indicator would claim a pause on an install where nothing was going to switch anyway."""
+        return self._paused_by_streaming() and self._has_active_rule()
 
-    def _has_enabled_rule(self):
-        return any(rule.get("enabled") for rule in self.store.rules)
+    def _has_active_rule(self):
+        present = {display["id"] for display in connected_displays()}
+        return bool(self._enabled_displays(present))
 
     async def get_pause_when_streaming(self):
         return self.store.pause_when_streaming
@@ -336,9 +337,10 @@ class Plugin:
             # Someone is streaming from this machine, so they're not at the TV: leave its input
             # alone. Drop the queue too, or a rule queued moments before the session started
             # would still land mid-stream. `seen` stays current (it was just refreshed), so
-            # ending the session doesn't make every display look newly docked — but the resume
-            # flag is left unconsumed, so a "wake" isn't silently downgraded by a paused poll.
+            # ending the session doesn't make every display look newly docked. Consume the resume
+            # flag as well so a wake that occurred during streaming is cleanly suppressed.
             self.pending.clear()
+            self._resumed = False
             return
         reason = self._take_reason()
         self._enqueue(appeared, now, reason)
