@@ -421,6 +421,14 @@ class Plugin:
                 return
             if not await self._wake(tv):
                 return  # asleep/unreachable right now — leave it queued for the next poll
+            if self._paused_by_streaming():
+                # A session can start *while this attempt is running* — _wake alone can hold it
+                # for WAKE_TIMEOUT. _apply_rules drops the queue when the pause begins, but it
+                # cannot cancel an attempt already in flight, so this is the last check before we
+                # touch the TV. Dropped rather than deferred, like any rule skipped mid-session.
+                self.pending.pop(did, None)
+                decky.logger.info(f"auto-switch: dropped {did}, a Remote Play session started")
+                return
             driver = select_driver(REGISTRY, tv["brand"])
             changed = await driver.set_input(tv["host"], tv["creds"], rule["input_id"])
             self.last_success[did] = time.monotonic()
