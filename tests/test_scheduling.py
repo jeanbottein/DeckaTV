@@ -144,13 +144,13 @@ def test_the_indicator_stays_quiet_when_every_rule_is_disabled(plugin):
 
 def test_the_first_poll_after_a_resume_reads_as_the_wake_trigger(plugin):
     plugin._resumed = True
-    assert plugin._take_reason() == "wake"
+    assert plugin._consume_trigger_reason() == "wake"
 
 
 def test_the_resume_flag_is_consumed_once(plugin):
     plugin._resumed = True
-    plugin._take_reason()
-    assert plugin._take_reason() == "connect"
+    plugin._consume_trigger_reason()
+    assert plugin._consume_trigger_reason() == "connect"
 
 
 def test_an_appearing_display_is_queued_when_nothing_is_streaming(plugin, one_connected_display):

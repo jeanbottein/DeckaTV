@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isReachable } from "../api";
+import { statusDot } from "./styles";
 
 export function ReachabilityIndicator({ host }: { host: string }) {
   const [online, setOnline] = useState(false);
@@ -25,18 +26,5 @@ export function ReachabilityIndicator({ host }: { host: string }) {
 
   const color = online ? "#2ecc71" : "#e74c3c";
   const title = online ? "Reachable" : "Unreachable";
-  return (
-    <span
-      title={title}
-      style={{
-        width: "10px",
-        height: "10px",
-        borderRadius: "50%",
-        background: color,
-        marginLeft: "8px",
-        flexShrink: 0,
-        display: "inline-block",
-      }}
-    />
-  );
+  return <span title={title} style={statusDot(color)} />;
 }

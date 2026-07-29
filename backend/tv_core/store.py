@@ -5,7 +5,10 @@ opaque, JSON-serializable value the brand's driver returned from pairing.
 """
 
 import json
+import logging
 import os
+
+_logger = logging.getLogger(__name__)
 
 
 class Store:
@@ -37,7 +40,11 @@ class Store:
                 json.dump(self._data, handle, indent=2)
             os.replace(tmp_path, self._path)
         except OSError:
-            pass
+            _logger.warning("failed to save %s", self._path, exc_info=True)
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     @property
     def tvs(self):

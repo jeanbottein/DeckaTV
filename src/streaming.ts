@@ -37,7 +37,9 @@ export function resyncStreaming() {
 // stopping, so handlers push through here: one RPC per real transition, however chatty the
 // callbacks are. resyncStreaming stays unconditional — it repairs a backend whose view has
 // drifted, which this cache would otherwise suppress.
-const pushIfChanged = () => isStreaming() !== pushed && resyncStreaming();
+const pushIfChanged = () => {
+  if (isStreaming() !== pushed) resyncStreaming();
+};
 
 // Two independent signals, OR'd, because neither alone is trustworthy. SessionStarted/Stopped is
 // the symmetric, purpose-built pair but leaks an entry if a stop is ever missed; the settings'

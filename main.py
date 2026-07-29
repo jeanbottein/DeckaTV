@@ -107,15 +107,16 @@ class Plugin:
 
     async def set_streaming(self, active: bool):
         """The frontend reporting whether a Remote Play session is streaming from this machine."""
-        self.streaming = bool(active)
+        self.streaming = active
 
     async def auto_switch_paused(self):
         """What the panel's indicator shows. Needs an enabled rule matching a connected display,
         or the indicator would claim a pause on an install where nothing was going to switch anyway."""
-        return self._paused_by_streaming() and self._has_active_rule()
-
-    def _has_active_rule(self):
-        present = {display["id"] for display in connected_displays()}
+        if not self._paused_by_streaming():
+            return False
+        present = await asyncio.to_thread(
+            lambda: {display["id"] for display in connected_displays()}
+        )
         return bool(self._enabled_displays(present))
 
     async def get_pause_when_streaming(self):
@@ -345,11 +346,11 @@ class Plugin:
             self.pending.clear()
             self._resumed = False
             return
-        reason = self._take_reason()
+        reason = self._consume_trigger_reason()
         self._enqueue(appeared, now, reason)
         self._drain(now)
 
-    def _take_reason(self):
+    def _consume_trigger_reason(self):
         """Why displays appeared this poll: "wake" right after a resume, "connect" otherwise
         (docking or booting up docked). Consumed only once the displays have been read, so a
         failed poll retries as "wake" rather than downgrading to "connect"."""
