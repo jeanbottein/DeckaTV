@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      # This groups ALL frontend updates into a single PR
+      all-frontend-dependencies:
+        patterns:
+          - "*"
