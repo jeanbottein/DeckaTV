@@ -8,8 +8,15 @@ import os
 from collections import deque
 
 
+def _mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0
+
+
 def _newest_first(paths):
-    return sorted(paths, key=os.path.getmtime, reverse=True)
+    return sorted(paths, key=_mtime, reverse=True)
 
 
 def _log_files(log_dir):

@@ -118,10 +118,17 @@ def test_never_paused_when_the_setting_is_off(plugin):
     assert plugin._paused_by_streaming() is False
 
 
-def test_the_indicator_reports_the_pause(plugin):
+def test_the_indicator_reports_the_pause(plugin, one_connected_display):
     plugin.store = FakeStore([_rule("HDMI-1")])
     asyncio.run(plugin.set_streaming(True))
     assert asyncio.run(plugin.auto_switch_paused()) is True
+
+
+def test_the_indicator_stays_quiet_when_no_display_is_connected(plugin, monkeypatch):
+    monkeypatch.setattr(main, "connected_displays", lambda: [])
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin.set_streaming(True))
+    assert asyncio.run(plugin.auto_switch_paused()) is False
 
 
 def test_the_indicator_stays_quiet_when_no_rule_could_have_fired(plugin):
@@ -137,13 +144,13 @@ def test_the_indicator_stays_quiet_when_every_rule_is_disabled(plugin):
 
 def test_the_first_poll_after_a_resume_reads_as_the_wake_trigger(plugin):
     plugin._resumed = True
-    assert plugin._take_reason() == "wake"
+    assert plugin._consume_trigger_reason() == "wake"
 
 
 def test_the_resume_flag_is_consumed_once(plugin):
     plugin._resumed = True
-    plugin._take_reason()
-    assert plugin._take_reason() == "connect"
+    plugin._consume_trigger_reason()
+    assert plugin._consume_trigger_reason() == "connect"
 
 
 def test_an_appearing_display_is_queued_when_nothing_is_streaming(plugin, one_connected_display):
@@ -160,8 +167,63 @@ def test_a_streaming_session_drops_the_queue_instead_of_switching(plugin, one_co
     assert plugin.pending == {}
 
 
-def test_a_paused_poll_leaves_the_resume_flag_for_the_next_one(plugin, one_connected_display):
+@pytest.fixture
+def switched(plugin, monkeypatch):
+    """Make _attempt runnable off-device: a paired TV, no network, and a record of every
+    set_input that actually reached a driver."""
+    calls = []
+
+    class FakeDriver:
+        async def set_input(self, host, creds, input_id):
+            calls.append(input_id)
+            return True
+
+    plugin.store.find_tv = lambda host: {"host": host, "name": "TV", "brand": "lg", "creds": {}}
+    monkeypatch.setattr(main, "select_driver", lambda registry, brand: FakeDriver())
+    return calls
+
+
+def test_an_attempt_switches_when_nothing_is_streaming(plugin, switched):
+    plugin.pending = {"HDMI-1": {"after": 0, "deadline": 1e9}}
+    plugin._wake = _always_wakes
+    asyncio.run(plugin._attempt(_rule("HDMI-1"), "HDMI-1"))
+    assert switched == ["HDMI_1"]
+
+
+def test_a_session_starting_mid_attempt_stops_the_switch_before_it_lands(plugin, switched):
+    """_wake can hold an attempt for WAKE_TIMEOUT. A session starting inside that window clears
+    the queue, but cannot cancel the already-spawned task — so the attempt must re-check."""
+    plugin.pending = {"HDMI-1": {"after": 0, "deadline": 1e9}}
+
+    async def wake_then_stream(tv):
+        await plugin.set_streaming(True)  # the session starts while we wait on the TV
+        return True
+
+    plugin._wake = wake_then_stream
+    asyncio.run(plugin._attempt(_rule("HDMI-1"), "HDMI-1"))
+    assert switched == []
+    assert plugin.pending == {}  # dropped, not deferred
+
+
+async def _always_wakes(tv):
+    return True
+
+
+def test_a_paused_poll_clears_the_resume_flag_cleanly(plugin, one_connected_display):
     plugin._resumed = True
     asyncio.run(plugin.set_streaming(True))
     asyncio.run(plugin._apply_rules())
-    assert plugin._resumed is True
+    assert plugin._resumed is False
+
+
+def test_ending_streaming_resumes_normal_polling_for_new_appearances(plugin, monkeypatch):
+    monkeypatch.setattr(main, "connected_displays", lambda: [])
+    plugin.store = FakeStore([_rule("HDMI-1")])
+    asyncio.run(plugin.set_streaming(True))
+    asyncio.run(plugin._apply_rules())  # poll while streaming (no displays connected)
+
+    # Streaming ends and a new display connects
+    asyncio.run(plugin.set_streaming(False))
+    monkeypatch.setattr(main, "connected_displays", lambda: [{"id": "HDMI-1"}])
+    asyncio.run(plugin._apply_rules())
+    assert "HDMI-1" in plugin.pending

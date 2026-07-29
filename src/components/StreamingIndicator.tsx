@@ -1,6 +1,7 @@
 import { PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { autoSwitchPaused, safeCall } from "../api";
+import { statusDot, statusLabel, statusLine } from "./styles";
 
 const POLL_MS = 5000;
 
@@ -32,28 +33,12 @@ export function StreamingIndicator() {
   // Owns its own row so nothing renders — not even an empty padded row — when idle.
   return (
     <PanelSectionRow>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          fontSize: "0.8em",
-          opacity: 0.6,
-          paddingBottom: "8px",
-        }}
-      >
-        <span style={{ fontWeight: "bold", marginRight: "6px" }}>Remote Play</span>
+      <div style={statusLine}>
+        <span style={statusLabel}>Remote Play</span>
         <span>auto-switch paused</span>
         <span
           title="A Remote Play session is streaming from this machine"
-          style={{
-            width: "10px",
-            height: "10px",
-            borderRadius: "50%",
-            background: "#f39c12",
-            marginLeft: "8px",
-            flexShrink: 0,
-            display: "inline-block",
-          }}
+          style={statusDot("#f39c12")}
         />
       </div>
     </PanelSectionRow>

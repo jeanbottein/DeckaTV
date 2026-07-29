@@ -107,15 +107,17 @@ class Plugin:
 
     async def set_streaming(self, active: bool):
         """The frontend reporting whether a Remote Play session is streaming from this machine."""
-        self.streaming = bool(active)
+        self.streaming = active
 
     async def auto_switch_paused(self):
-        """What the panel's indicator shows. Needs a rule that could actually have fired, or the
-        indicator would claim a pause on an install where nothing was going to switch anyway."""
-        return self._paused_by_streaming() and self._has_enabled_rule()
-
-    def _has_enabled_rule(self):
-        return any(rule.get("enabled") for rule in self.store.rules)
+        """What the panel's indicator shows. Needs an enabled rule matching a connected display,
+        or the indicator would claim a pause on an install where nothing was going to switch anyway."""
+        if not self._paused_by_streaming():
+            return False
+        present = await asyncio.to_thread(
+            lambda: {display["id"] for display in connected_displays()}
+        )
+        return bool(self._enabled_displays(present))
 
     async def get_pause_when_streaming(self):
         return self.store.pause_when_streaming
@@ -166,7 +168,9 @@ class Plugin:
         if inputs:
             self.store.set_inputs(host, inputs)
             if not tv.get("mac"):  # backfill the MAC for Wake-on-LAN while the TV is up
-                self.store.set_mac(host, resolve_mac(host))
+                mac = await asyncio.to_thread(resolve_mac, host)
+                if mac:
+                    self.store.set_mac(host, mac)
             return inputs
         return self.store.cached_inputs(host)
 
@@ -180,7 +184,8 @@ class Plugin:
     async def pair_tv(self, host: str, name: str, brand: str):
         creds = await select_driver(REGISTRY, brand).pair(host)
         label = name or host
-        self.store.upsert_tv(host, label, brand, creds, resolve_mac(host))
+        mac = await asyncio.to_thread(resolve_mac, host)
+        self.store.upsert_tv(host, label, brand, creds, mac)
         return {"host": host, "name": label, "brand": brand}
 
     async def remove_tv(self, host: str):
@@ -273,7 +278,7 @@ class Plugin:
             return True
         mac = tv.get("mac")
         if not mac:  # never learned it (e.g. paired while offline) — the ARP table may be ready now
-            mac = resolve_mac(tv["host"])
+            mac = await asyncio.to_thread(resolve_mac, tv["host"])
             if mac and is_valid_mac(mac):
                 self.store.set_mac(tv["host"], mac)
         if not mac or not is_valid_mac(mac):  # can't wake without a usable MAC
@@ -336,15 +341,16 @@ class Plugin:
             # Someone is streaming from this machine, so they're not at the TV: leave its input
             # alone. Drop the queue too, or a rule queued moments before the session started
             # would still land mid-stream. `seen` stays current (it was just refreshed), so
-            # ending the session doesn't make every display look newly docked — but the resume
-            # flag is left unconsumed, so a "wake" isn't silently downgraded by a paused poll.
+            # ending the session doesn't make every display look newly docked. Consume the resume
+            # flag as well so a wake that occurred during streaming is cleanly suppressed.
             self.pending.clear()
+            self._resumed = False
             return
-        reason = self._take_reason()
+        reason = self._consume_trigger_reason()
         self._enqueue(appeared, now, reason)
         self._drain(now)
 
-    def _take_reason(self):
+    def _consume_trigger_reason(self):
         """Why displays appeared this poll: "wake" right after a resume, "connect" otherwise
         (docking or booting up docked). Consumed only once the displays have been read, so a
         failed poll retries as "wake" rather than downgrading to "connect"."""
@@ -415,6 +421,14 @@ class Plugin:
                 return
             if not await self._wake(tv):
                 return  # asleep/unreachable right now — leave it queued for the next poll
+            if self._paused_by_streaming():
+                # A session can start *while this attempt is running* — _wake alone can hold it
+                # for WAKE_TIMEOUT. _apply_rules drops the queue when the pause begins, but it
+                # cannot cancel an attempt already in flight, so this is the last check before we
+                # touch the TV. Dropped rather than deferred, like any rule skipped mid-session.
+                self.pending.pop(did, None)
+                decky.logger.info(f"auto-switch: dropped {did}, a Remote Play session started")
+                return
             driver = select_driver(REGISTRY, tv["brand"])
             changed = await driver.set_input(tv["host"], tv["creds"], rule["input_id"])
             self.last_success[did] = time.monotonic()
